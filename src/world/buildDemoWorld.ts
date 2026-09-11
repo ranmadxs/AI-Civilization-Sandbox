@@ -447,6 +447,8 @@ function countNationCities(cities: City[], nationId: string): number {
   return cities.reduce((count, city) => count + Number(city.nationId === nationId), 0);
 }
 
+const TILE_POP_CAP = 20000;
+
 function createCity(
   nation: Nation,
   province: Province,
@@ -458,8 +460,10 @@ function createCity(
   const terrainLevelBonus = tile.terrain === "plain" || tile.terrain === "coast" ? 1 : 0;
   const resourceLevelBonus = tile.resource ? 1 : 0;
   const level = clampInt((isCapital ? 3 : 1) + terrainLevelBonus + resourceLevelBonus, 1, 5);
-  const populationBase = isCapital ? 92000 : 28000;
+  const provinceTileCount = province.tileCount;
+  const populationBase = isCapital ? 8000 : 2000;
   const populationNoise = 0.78 + randomAt(tile.x, tile.y, seedHash + 5200) * 0.55;
+  const maxPopulation = provinceTileCount * TILE_POP_CAP;
 
   return {
     id: `city-${index}`,
@@ -469,7 +473,7 @@ function createCity(
     x: tile.x,
     y: tile.y,
     isCapital,
-    population: Math.round(populationBase * level * populationNoise),
+    population: Math.round(Math.min(populationBase * level * populationNoise, maxPopulation)),
     level,
   };
 }

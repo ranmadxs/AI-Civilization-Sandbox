@@ -163,8 +163,8 @@ const unitMonthlyResourceUpkeep: Record<UnitType, Partial<Record<Resource, numbe
   militia: { grain: 0.055 },
 };
 
-const truceAfterWarMonths = 18;
-const armyCommandIntervalMonths = 3;
+const truceAfterWarMonths = 60;
+const armyCommandIntervalMonths = 1;
 
 export function buildInitialMilitaryState(world: World): MilitaryState {
   return Object.fromEntries(
@@ -958,18 +958,23 @@ function investSurplusInCities(
   } satisfies Partial<Record<Resource, number>>;
 
   if (city.level < 5 && stockpile.gold >= levelCostGold && hasResources(stockpile.resources, levelCost)) {
-    stockpile.gold -= levelCostGold;
-    spendResources(stockpile.resources, levelCost);
-    city.level += 1;
-    city.population = Math.round(city.population * 1.08);
-    events.push(buildWarEvent({
-      currentMonth,
-      description: `${nationName(world, nationId)} invested surplus resources to develop ${city.name} to level ${city.level}.`,
-      id: `event-city-developed-${city.id}-${currentMonth}`,
-      kind: "city_developed",
-      nationIds: [nationId],
-      title: "City Developed",
-    }));
+    const provinceTiles = world.tiles.filter((t) => t.provinceId === city.provinceId).length;
+    const maxPopulation = provinceTiles * 20000;
+    const projectedPop = Math.round(city.population * 1.08);
+    if (projectedPop <= maxPopulation) {
+      stockpile.gold -= levelCostGold;
+      spendResources(stockpile.resources, levelCost);
+      city.level += 1;
+      city.population = projectedPop;
+      events.push(buildWarEvent({
+        currentMonth,
+        description: `${nationName(world, nationId)} invested surplus resources to develop ${city.name} to level ${city.level}.`,
+        id: `event-city-developed-${city.id}-${currentMonth}`,
+        kind: "city_developed",
+        nationIds: [nationId],
+        title: "City Developed",
+      }));
+    }
     return { stockpile };
   }
 
@@ -985,9 +990,15 @@ function investSurplusInCities(
   } satisfies Partial<Record<Resource, number>>;
 
   if (growthGold >= 100 && hasResources(stockpile.resources, growthCost)) {
-    stockpile.gold -= growthGold;
-    spendResources(stockpile.resources, growthCost);
-    city.population += Math.round(Math.min(9000, Math.sqrt(growthGold) * 70 + (growthCost.grain ?? 0) * 3));
+    const provinceTiles = world.tiles.filter((t) => t.provinceId === city.provinceId).length;
+    const maxPopulation = provinceTiles * 20000;
+    const growthAmount = Math.round(Math.min(9000, Math.sqrt(growthGold) * 70 + (growthCost.grain ?? 0) * 3));
+    const newPopulation = Math.min(city.population + growthAmount, maxPopulation);
+    if (newPopulation > city.population) {
+      stockpile.gold -= growthGold;
+      spendResources(stockpile.resources, growthCost);
+      city.population = newPopulation;
+    }
     return { stockpile };
   }
 
