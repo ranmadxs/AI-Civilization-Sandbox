@@ -2,7 +2,8 @@
 
 **Versión del documento:** 1.0  
 **Última actualización:** 2026-09-11  
-**Versión del juego:** V0.1.0
+**Versión del juego:** V0.2.0  
+**Licencia:** GPL-2.0-only
 
 ---
 
@@ -346,3 +347,28 @@ El repositorio incluye infraestructura para conectar cada nación a un modelo de
 ---
 
 *Documento generado como referencia del repositorio AI Civilization Sandbox.*
+
+---
+
+## 13. Licencia
+
+Este proyecto está licenciado bajo la **GNU General Public License version 2.0 (GPL-2.0-only)**.
+
+- **SPDX:** `GPL-2.0-only`
+- **Archivo:** `LICENSE`
+- **Texto:** Licencia completa de GNU GPL v2 como la usada por el kernel de Linux
+- **Referencia:** `<https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt>`
+
+Bajo los términos de esta licencia, el software se distribuye "tal cual", sin garantía de ningún tipo, y cualquier obra derivada debe distribuirse bajo los mismos términos.
+
+### Resumen de la Licencia GPL-2.0-only
+
+- ✅ Uso comercial permitido
+- ✅ Modificación permitida
+- ✅ Distribución permitida
+- ✅ Uso privado permitido
+- ❌ Suministro de patentes (cláusula 7)
+- ❌ Responsabilidad limitada (sección NO WARRANTY)
+- ⚠️ **Copyleft**: obras derivadas deben usar la misma licencia GPL-2.0
+
+Cualquier contribución al proyecto se considera bajo los términos de esta licencia.

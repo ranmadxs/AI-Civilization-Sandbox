@@ -114,3 +114,15 @@ pnpm smoke:simulation
 - PixiJS
 
 Current version / 当前版本 / Versión actual: `V0.2.0`
+
+## License / Licencia / Licencia
+
+This project is licensed under the GNU General Public License version 2.0 (GPL-2.0-only).
+
+Este proyecto está licenciado bajo la GNU General Public License versión 2.0 (GPL-2.0-only).
+
+See the [LICENSE](LICENSE) file for details.
+
+Ver el archivo [LICENSE](LICENSE) para más detalles.
+
+SPDX: `GPL-2.0-only`

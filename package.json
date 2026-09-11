@@ -1,5 +1,6 @@
 {
   "name": "ai-civilization-sandbox",
+  "license": "GPL-2.0-only",
   "version": "0.2.0",
   "private": true,
   "type": "module",
