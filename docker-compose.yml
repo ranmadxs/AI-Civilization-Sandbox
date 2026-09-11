@@ -20,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: build
+      target: preview
     ports:
       - "4173:4173"
 

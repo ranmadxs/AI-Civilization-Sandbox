@@ -77,7 +77,8 @@ jobs:
 
       - name: Install pnpm
         run: |
-          npm install -g pnpm@latest
+          corepack enable pnpm
+          corepack prepare pnpm@latest --activate
           pnpm --version
 
       - name: Install dependencies
@@ -120,7 +121,8 @@ jobs:
 
       - name: Install pnpm
         run: |
-          npm install -g pnpm@latest
+          corepack enable pnpm
+          corepack prepare pnpm@latest --activate
           pnpm --version
 
       - name: Install dependencies

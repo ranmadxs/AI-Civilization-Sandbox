@@ -22,6 +22,8 @@ FROM base AS build
 
 RUN pnpm build
 
+CMD ["pnpm", "preview", "--host", "0.0.0.0"]
+
 FROM base AS preview
 
 EXPOSE 4173

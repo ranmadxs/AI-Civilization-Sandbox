@@ -11,17 +11,11 @@ docs/images/
 *.md
 !README.md
 !docs/spec.md
-scripts/
 .gitignore
 Dockerfile
 .dockerignore
 docker-compose*.yml
-pnpm-workspace.yaml
 tsconfig.node.json
-vite.config.ts
-vite.config.js
-vite.config.d.ts
-index.html
 *.png
 *.jpg
 *.svg
