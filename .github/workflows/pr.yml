@@ -73,12 +73,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
 
       - name: Install pnpm
         run: |
-          corepack enable pnpm
-          corepack prepare pnpm@9.15.0 --activate
+          npm install -g pnpm@9.15.0
+          echo "$(npm config get prefix)/bin" >> $GITHUB_PATH
           pnpm --version
 
       - name: Install dependencies
@@ -117,12 +116,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'pnpm'
 
       - name: Install pnpm
         run: |
-          corepack enable pnpm
-          corepack prepare pnpm@9.15.0 --activate
+          npm install -g pnpm@9.15.0
+          echo "$(npm config get prefix)/bin" >> $GITHUB_PATH
           pnpm --version
 
       - name: Install dependencies
