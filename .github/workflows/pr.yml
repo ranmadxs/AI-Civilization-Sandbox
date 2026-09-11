@@ -77,8 +77,8 @@ jobs:
 
       - name: Install pnpm
         run: |
-          npm install -g pnpm@9.15.0
-          echo "$(npm config get prefix)/bin" >> $GITHUB_PATH
+          corepack enable pnpm
+          corepack prepare pnpm@9.15.0 --activate
           pnpm --version
 
       - name: Install dependencies
@@ -121,8 +121,8 @@ jobs:
 
       - name: Install pnpm
         run: |
-          npm install -g pnpm@9.15.0
-          echo "$(npm config get prefix)/bin" >> $GITHUB_PATH
+          corepack enable pnpm
+          corepack prepare pnpm@9.15.0 --activate
           pnpm --version
 
       - name: Install dependencies
