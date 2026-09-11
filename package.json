@@ -1,12 +1,14 @@
 {
   "name": "ai-civilization-sandbox",
-  "version": "0.1.0",
+  "license": "GPL-2.0-only",
+  "version": "0.2.0",
+  "packageManager": "pnpm@9.15.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
-    "preview": "vite preview --host 127.0.0.1",
+    "preview": "vite preview --host 0.0.0.0",
     "smoke:simulation": "node scripts/smoke-simulation.mjs"
   },
   "dependencies": {
