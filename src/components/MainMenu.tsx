@@ -141,6 +141,14 @@ export function MainMenu({
               <span>Game Language</span>
               <div role="group" aria-label="Game Language">
                 <button
+                  aria-pressed={language === "es"}
+                  className={language === "es" ? "active" : ""}
+                  onClick={() => onChangeLanguage("es")}
+                  type="button"
+                >
+                  🇪🇸 Español
+                </button>
+                <button
                   aria-pressed={language === "zh"}
                   className={language === "zh" ? "active" : ""}
                   onClick={() => onChangeLanguage("zh")}

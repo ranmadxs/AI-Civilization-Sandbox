@@ -341,6 +341,9 @@ function drawWorld(
         continue;
       }
 
+      if (!province.nationId) {
+        continue;
+      }
       const nation = world.nationById.get(province.nationId);
       if (nation && mapMode === "political") {
         ownership

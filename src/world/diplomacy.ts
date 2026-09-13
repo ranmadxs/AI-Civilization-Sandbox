@@ -16,6 +16,8 @@ export type WarState = {
   defenderScore?: number;
   relationPenaltyAppliedMonth?: number;
   targetProvinceId?: string;
+  expansionPolicy?: "control_city" | "decisive_battle" | "control_resource" | "none";
+  targetNationIdForCapture?: string;
 };
 
 export type AllianceTreaty = {
@@ -138,11 +140,14 @@ export function executeDiplomacyPoliciesWithEvents(
     switch (diplomacyPolicy.policy) {
       case "declare_war":
         if (canDeclareWar(next, nationId, targetNationId, currentMonth, world)) {
+          const nationPolicy = policies[nationId];
           next.wars.push({
             attackerNationId: nationId,
             defenderNationId: targetNationId,
             id: `war-${relationKey(nationId, targetNationId)}-${currentMonth}`,
             startedAtMonth: currentMonth,
+            expansionPolicy: nationPolicy?.expansion?.policy,
+            targetNationIdForCapture: nationPolicy?.expansion?.targetNationId ?? targetNationId,
           });
           events.push(buildDiplomacyEvent({
             currentMonth,

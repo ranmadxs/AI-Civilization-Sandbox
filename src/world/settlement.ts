@@ -17,13 +17,16 @@ export type NationMonthlyIncome = {
 
 export function buildInitialNationStockpiles(world: World): NationStockpiles {
   return Object.fromEntries(
-    world.nations.map((nation) => [
-      nation.id,
-      {
-        gold: 0,
-        resources: emptyResources(),
-      },
-    ]),
+    world.nations.map((nation) => {
+      const income = calculateNationMonthlyIncome(world, nation.id);
+      return [
+        nation.id,
+        {
+          gold: Math.round(income.gold * 3),
+          resources: emptyResources(),
+        },
+      ];
+    }),
   );
 }
 

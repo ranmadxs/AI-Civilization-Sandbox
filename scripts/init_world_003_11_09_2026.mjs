@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import { createServer } from "vite";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 
 const seed = "init_world_003_11_09_2026";
-const yearsToRun = 2000;
+const yearsToRun = 200;
 const monthsToRun = yearsToRun * 12;
 const steps = 5;
 const snapshotMonths = Array.from({ length: steps }, (_, i) => Math.round((i / (steps - 1)) * monthsToRun));
@@ -31,13 +31,14 @@ const server = await createServer({
   configFile: undefined,
   logLevel: "error",
   server: { middlewareMode: true },
+  root: "src",
 });
 
 const modules = await Promise.all([
-  server.ssrLoadModule("/src/world/buildDemoWorld.ts"),
-  server.ssrLoadModule("/src/world/turnSimulation.ts"),
-  server.ssrLoadModule("/src/world/war.ts"),
-  server.ssrLoadModule("/src/world/cityEconomy.ts"),
+  server.ssrLoadModule("/world/buildDemoWorld.ts"),
+  server.ssrLoadModule("/world/turnSimulation.ts"),
+  server.ssrLoadModule("/world/war.ts"),
+  server.ssrLoadModule("/world/cityEconomy.ts"),
 ]);
 const buildDemoWorld = modules[0].buildDemoWorld;
 const advanceSimulationTurn = modules[1].advanceSimulationTurn;
@@ -46,6 +47,21 @@ const getNationWarSummary = modules[2].getNationWarSummary;
 const calculateNationCityEconomy = modules[3].calculateNationCityEconomy;
 
 const world = buildDemoWorld(seed, { nationCount });
+
+function findMissingNationResources(world) {
+  const resourceTypes = ["grain", "timber", "iron", "coal", "oil"];
+  return world.nations.flatMap((nation) => {
+    const provinceIds = new Set(world.provinces.filter((province) => province.nationId === nation.id).map((province) => province.id));
+    const resources = new Set(world.tiles.filter((tile) => tile.provinceId && provinceIds.has(tile.provinceId)).map((tile) => tile.resource).filter(Boolean));
+    return resourceTypes.filter((resource) => !resources.has(resource)).map((resource) => `${nation.name} missing ${resource}`);
+  });
+}
+
+const missingResources = findMissingNationResources(world);
+if (missingResources.length > 0) {
+  throw new Error(`Recursos faltantes: ${missingResources.join("; ")}`);
+}
+
 const nationTurnExecutor = async () => undefined;
 let simulation = createInitialSimulationState(world);
 
@@ -266,6 +282,7 @@ try {
   const pngPath0 = await captureWorld(world, simulation, 0);
   writeFileSync(`${outputDir}/report_year_0.html`, buildPartialReport(world, simulation, 0));
   const snapshots = [{ month: 0, pngPath: pngPath0 }];
+  recordSnapshot(0);
 
   for (let month = 1; month <= monthsToRun; month += 1) {
     const next = await advanceSimulationTurn(world, simulation, nationTurnExecutor);

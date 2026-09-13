@@ -11,10 +11,13 @@
     "preview": "vite preview --host 0.0.0.0",
     "smoke:simulation": "node scripts/smoke-simulation.mjs",
     "sim:002": "node scripts/init_world_002_11_09_2026.mjs",
-    "sim:003": "node scripts/init_world_003_11_09_2026.mjs"
+    "sim:003": "node scripts/init_world_003_11_09_2026.mjs",
+    "sim:004": "node scripts/init_world_004_11_09_2026.mjs",
+    "test_model": "node scripts/test_model.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
+    "dotenv": "^17.4.2",
     "pixi.js": "^8.14.3",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"

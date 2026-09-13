@@ -193,10 +193,26 @@ function buildNationPolicyProfile(
 }
 
 function decideExpansion(profile: ReturnType<typeof buildNationPolicyProfile>): PolicyDirection<ExpansionPolicy> {
+  if (profile.adjacentRelations.length === 0) {
+    return {
+      policy: "none",
+      label: expansionLabels.none,
+      rationale: "No adjacent nations to expand toward.",
+    };
+  }
+
   const borderHostileRelation = profile.adjacentRelations.find((relation) => relation.attitude <= -10);
   const borderOpportunityRelation = profile.adjacentRelations.find((relation) => relation.attitude <= 12);
 
-  const targetNationId = otherNationId(borderHostileRelation ?? borderOpportunityRelation!, profile.nationId);
+  const targetRelation = borderHostileRelation ?? borderOpportunityRelation;
+  if (!targetRelation) {
+    return {
+      policy: "none",
+      label: expansionLabels.none,
+      rationale: "No viable expansion target among adjacent nations.",
+    };
+  }
+  const targetNationId = otherNationId(targetRelation, profile.nationId);
 
   if (profile.resourceDiversity < 4) {
     return {

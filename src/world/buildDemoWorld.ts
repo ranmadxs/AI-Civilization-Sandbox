@@ -12,6 +12,7 @@ const targetProvinceCount = 118;
 export type WorldGenerationOptions = {
   cityCount?: number;
   nationCount?: number;
+  provincesPerNation?: number;
 };
 
 const nationColors = [
@@ -47,8 +48,11 @@ export function buildDemoWorld(seed = defaultSeed, options: WorldGenerationOptio
   const provinces = buildProvinces(tiles, provinceSeeds, seedHash, provinceNamePool);
   const capitals = chooseCapitalProvinces(provinces, rng, requestedNationCount);
   const nations = buildNations(capitals, rng);
-  assignNationsToProvinces(provinces, capitals, nations, seedHash);
-  ensureNationResourceCoverage(tiles, provinces, nations, seedHash);
+   assignNationsToProvinces(provinces, capitals, nations, seedHash);
+   if (options.provincesPerNation && options.provincesPerNation > 0) {
+     limitProvincesPerNation(provinces, nations, options.provincesPerNation);
+   }
+   ensureNationResourceCoverage(tiles, provinces, nations, seedHash);
 
   const provinceById = new Map(provinces.map((province) => [province.id, province]));
   const nationById = new Map(nations.map((nation) => [nation.id, nation]));
@@ -170,6 +174,7 @@ function buildProvinces(
         name: nameCycle === 0 ? nameEntry.en : `${nameEntry.en} ${nameCycle + 1}`,
         nameEn: nameCycle === 0 ? nameEntry.en : `${nameEntry.en} ${nameCycle + 1}`,
         nameZh: nameCycle === 0 ? nameEntry.zh : `${nameEntry.zh}${nameCycle + 1}`,
+        nameEs: nameCycle === 0 ? nameEntry.es : `${nameEntry.es}${nameCycle + 1}`,
         nationId: "",
         centerX: stat.xSum / stat.count,
         centerY: stat.ySum / stat.count,
@@ -229,6 +234,7 @@ function buildNations(capitals: Province[], rng: () => number): Nation[] {
       name: `${base.en} ${form.en}`,
       nameEn: `${base.en} ${form.en}`,
       nameZh: `${base.zh}${form.zh}`,
+      nameEs: `${form.es} de ${base.es}`,
       nameBaseId: base.id,
       governmentFormId: form.id,
       ...colors,
@@ -265,6 +271,25 @@ function assignNationsToProvinces(
     }
 
     province.nationId = nations[capitals.indexOf(bestCapital)].id;
+  }
+}
+
+/** Limita cada nación a un número fijo de provincias (su capital + las más cercanas). */
+function limitProvincesPerNation(provinces: Province[], nations: Nation[], maxPerNation: number): void {
+  const nationProvinceMap = new Map<string, Province[]>();
+  for (const province of provinces) {
+    if (!province.nationId) continue;
+    const list = nationProvinceMap.get(province.nationId) ?? [];
+    list.push(province);
+    nationProvinceMap.set(province.nationId, list);
+  }
+  for (const [nationId, nationProvinces] of nationProvinceMap) {
+    if (nationProvinces.length <= maxPerNation) continue;
+    const sorted = [...nationProvinces].sort((a, b) => b.tileCount - a.tileCount);
+    const keep = new Set(sorted.slice(0, maxPerNation).map((p) => p.id));
+    for (const province of nationProvinces) {
+      if (!keep.has(province.id)) province.nationId = undefined;
+    }
   }
 }
 
@@ -333,6 +358,7 @@ function buildCities(
   }
 
   for (const province of provinces) {
+    if (!province.nationId) continue;
     const nationProvinces = provincesByNation.get(province.nationId) ?? [];
     nationProvinces.push(province);
     provincesByNation.set(province.nationId, nationProvinces);
@@ -462,8 +488,9 @@ function createCity(
   const level = clampInt((isCapital ? 3 : 1) + terrainLevelBonus + resourceLevelBonus, 1, 5);
   const provinceTileCount = province.tileCount;
   const populationBase = isCapital ? 8000 : 2000;
-  const populationNoise = 0.78 + randomAt(tile.x, tile.y, seedHash + 5200) * 0.55;
+  const populationNoise = 0.15 + randomAt(tile.x, tile.y, seedHash + 5200) * 0.2;
   const maxPopulation = provinceTileCount * TILE_POP_CAP;
+  const initialPopulation = Math.round(populationBase * level * populationNoise);
 
   return {
     id: `city-${index}`,
@@ -473,7 +500,7 @@ function createCity(
     x: tile.x,
     y: tile.y,
     isCapital,
-    population: Math.round(Math.min(populationBase * level * populationNoise, maxPopulation)),
+    population: Math.min(initialPopulation, maxPopulation),
     level,
   };
 }
@@ -564,7 +591,7 @@ function cityTerrainScore(terrain: Terrain) {
 function cityName(index: number, seedHash: number) {
   const offset = Math.floor(randomAt(0, 0, seedHash + 6200) * cityNames.length);
   const entry = cityNames[(index + offset) % cityNames.length];
-  return { name: entry.en, nameEn: entry.en, nameZh: entry.zh, nameId: entry.id };
+  return { name: entry.en, nameEn: entry.en, nameZh: entry.zh, nameEs: entry.es, nameId: entry.id };
 }
 
 function shuffled<T>(values: T[], rng: () => number) {
