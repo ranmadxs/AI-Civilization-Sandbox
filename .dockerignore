@@ -15,7 +15,7 @@ docs/images/
 Dockerfile
 .dockerignore
 docker-compose*.yml
-tsconfig.node.json
+# tsconfig.node.json
 *.png
 *.jpg
 *.svg

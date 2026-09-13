@@ -15,6 +15,8 @@ export type NationCityEconomy = {
   maxDefense: number;
 };
 
+const POP_PER_TILE = 20000;
+
 export function calculateCityEconomy(city: City, world: World): CityEconomy {
   const tile = world.tiles.find((worldTile) => worldTile.x === city.x && worldTile.y === city.y);
   const provinceTiles = world.tiles.filter((worldTile) => worldTile.provinceId === city.provinceId);
@@ -28,15 +30,17 @@ export function calculateCityEconomy(city: City, world: World): CityEconomy {
   const capitalGold = city.isCapital ? 18 : 0;
   const capitalArmy = city.isCapital ? 220 : 0;
   const capitalDefense = city.isCapital ? 2 : 0;
+  const tileCapacity = provinceTiles.length * POP_PER_TILE;
+  const cappedPopulation = Math.min(city.population, tileCapacity);
   const monthlyGold = Math.round(
-    city.population / 950 +
+    cappedPopulation / 950 +
       city.level * 9 +
       resourceOutput * 0.72 +
       terrainGold +
       capitalGold,
   );
   const army = Math.round(
-    city.population * (city.isCapital ? 0.026 : 0.017) +
+    cappedPopulation * (city.isCapital ? 0.026 : 0.017) +
       city.level * 135 +
       resourceOutput * 7 +
       capitalArmy,
@@ -51,7 +55,7 @@ export function calculateCityEconomy(city: City, world: World): CityEconomy {
     army,
     defense,
     monthlyGold,
-    population: city.population,
+    population: cappedPopulation,
   };
 }
 

@@ -9,7 +9,9 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "smoke:simulation": "node scripts/smoke-simulation.mjs"
+    "smoke:simulation": "node scripts/smoke-simulation.mjs",
+    "sim:002": "node scripts/init_world_002_11_09_2026.mjs",
+    "sim:003": "node scripts/init_world_003_11_09_2026.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",

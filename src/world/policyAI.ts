@@ -5,7 +5,7 @@ import { getNationRelationsFor, otherNationId, type NationRelations } from "./re
 import { calculateNationMonthlyIncome, type NationStockpiles } from "./settlement";
 import type { Resource, World } from "./types";
 
-export const policyDecisionIntervalMonths = 6;
+export const policyDecisionIntervalMonths = 2;
 
 export type ExpansionPolicy = "none" | "control_city" | "control_resource" | "decisive_battle";
 export type EconomyPolicy = "construction" | "recovery" | "army_building";
@@ -196,14 +196,6 @@ function decideExpansion(profile: ReturnType<typeof buildNationPolicyProfile>): 
   const borderHostileRelation = profile.adjacentRelations.find((relation) => relation.attitude <= -10);
   const borderOpportunityRelation = profile.adjacentRelations.find((relation) => relation.attitude <= 12);
 
-  if (!borderHostileRelation && (!borderOpportunityRelation || profile.armyPerThousand < 22)) {
-    return {
-      policy: "none",
-      label: expansionLabels.none,
-      rationale: "No immediate tense border target or insufficient army density.",
-    };
-  }
-
   const targetNationId = otherNationId(borderHostileRelation ?? borderOpportunityRelation!, profile.nationId);
 
   if (profile.resourceDiversity < 4) {
@@ -228,13 +220,13 @@ function decideExpansion(profile: ReturnType<typeof buildNationPolicyProfile>): 
   return {
     policy: "decisive_battle",
     label: expansionLabels.decisive_battle,
-    rationale: "The army is dense enough to seek a direct confrontation.",
+    rationale: "Expanding through direct confrontation.",
     targetNationId,
   };
 }
 
 function decideEconomy(profile: ReturnType<typeof buildNationPolicyProfile>): PolicyDirection<EconomyPolicy> {
-  if (profile.stockpile.gold < profile.income.gold * 2 || profile.resourceDiversity <= 2) {
+  if (profile.stockpile.gold < profile.income.gold * 1.5 || profile.resourceDiversity <= 2) {
     return {
       policy: "recovery",
       label: economyLabels.recovery,
@@ -242,7 +234,7 @@ function decideEconomy(profile: ReturnType<typeof buildNationPolicyProfile>): Po
     };
   }
 
-  if (profile.armyPerThousand < 26 || profile.hostileRelations.length >= 2) {
+  if (profile.armyPerThousand < 15 || profile.hostileRelations.length >= 1) {
     return {
       policy: "army_building",
       label: economyLabels.army_building,
@@ -258,36 +250,37 @@ function decideEconomy(profile: ReturnType<typeof buildNationPolicyProfile>): Po
 }
 
 function decideDiplomacy(profile: ReturnType<typeof buildNationPolicyProfile>): PolicyDirection<DiplomacyPolicy> {
-  if (profile.worstRelation && profile.worstRelation.attitude <= -70 && profile.armyPerThousand < 12) {
+  const adjacentNations = profile.adjacentRelations.map((r) => otherNationId(r, profile.nationId));
+  const hostileAdjacent = profile.adjacentRelations.filter((r) => r.attitude <= -10);
+
+  if (hostileAdjacent.length > 0) {
+    const target = hostileAdjacent[0];
+    const targetNationId = otherNationId(target, profile.nationId);
+    return {
+      policy: "declare_war",
+      label: diplomacyLabels.declare_war,
+      rationale: "Hostile border target detected, declaring war to expand.",
+      targetNationId,
+    };
+  }
+
+  const borderOpportunity = profile.adjacentRelations.find((relation) => relation.attitude <= 8);
+  if (borderOpportunity) {
+    const targetNationId = otherNationId(borderOpportunity, profile.nationId);
+    return {
+      policy: "declare_war",
+      label: diplomacyLabels.declare_war,
+      rationale: "Nearby target available, declaring war to expand.",
+      targetNationId,
+    };
+  }
+
+  if (profile.worstRelation && profile.worstRelation.attitude <= -70 && profile.armyPerThousand < 6) {
     return {
       policy: "seek_vassalage",
       label: diplomacyLabels.seek_vassalage,
       rationale: "Severe hostility and weak army density make protection attractive.",
       targetNationId: otherNationId(profile.worstRelation, profile.nationId),
-    };
-  }
-
-  const borderHostileRelation = profile.adjacentRelations.find((relation) => relation.attitude <= -10);
-  const expansionOpportunity = profile.adjacentRelations.find((relation) => relation.attitude <= 8);
-  if (borderHostileRelation && profile.armyPerThousand >= 24) {
-    return {
-      policy: "declare_war",
-      label: diplomacyLabels.declare_war,
-      rationale: "Hostility is high and military readiness is strong enough for border war.",
-      targetNationId: otherNationId(borderHostileRelation, profile.nationId),
-    };
-  }
-
-  if (
-    expansionOpportunity &&
-    profile.armyPerThousand >= 24 &&
-    (profile.resourceDiversity < 4 || profile.cities.length < Math.max(3, Math.floor(profile.provinces.length / 7)))
-  ) {
-    return {
-      policy: "declare_war",
-      label: diplomacyLabels.declare_war,
-      rationale: "A nearby border target is weakly aligned and expansion would improve strategic depth.",
-      targetNationId: otherNationId(expansionOpportunity, profile.nationId),
     };
   }
 
