@@ -113,7 +113,7 @@ pnpm smoke:simulation
 - Vite
 - PixiJS
 
-Current version / 当前版本 / Versión actual: `V0.2.0`
+Current version / 当前版本 / Versión actual: `V1.0.0`
 
 ## License / Licencia / Licencia
 
