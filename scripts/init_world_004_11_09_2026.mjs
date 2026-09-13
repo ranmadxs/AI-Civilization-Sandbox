@@ -10,8 +10,8 @@ const projectRoot = new URL("..", import.meta.url).pathname;
 const seed = "init_world_004_11_09_2026";
 const yearsToRun = 3;
 const monthsToRun = yearsToRun * 12;
-const steps = 5;
-const snapshotMonths = Array.from({ length: steps }, (_, i) => Math.round((i / (steps - 1)) * monthsToRun));
+const steps = 4; // 4 years: 0, 1, 2, 3
+const snapshotMonths = Array.from({ length: steps }, (_, i) => i * 12); // months 0, 12, 24, 36
 const nationCount = 6;
 
 function nextExecutionNumber() {
@@ -145,12 +145,15 @@ function getNationData() {
 
 function generateWorldSVG(world) {
   const TILE_SIZE = 10;
-  const W = world.width, H = world.height;
+  const W = world.width + 2; // Add padding on each side
+  const H = world.height + 2;
   const terrainColors = { ocean: "#315f8f", coast: "#4a89a8", plain: "#88a95f", forest: "#477457", hill: "#9a8d65", mountain: "#7d7f85", desert: "#c9b06b" };
   const nationColors = {};
   for (const nation of world.nations) { nationColors[nation.id] = nation.color; }
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * TILE_SIZE}" height="${H * TILE_SIZE}" viewBox="0 0 ${W * TILE_SIZE} ${H * TILE_SIZE}">`;
-  for (const tile of world.tiles) svg += `<rect x="${tile.x * TILE_SIZE}" y="${tile.y * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${terrainColors[tile.terrain] || "#333"}"/>`;
+  const padding = 2;
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * TILE_SIZE}" height="${H * TILE_SIZE}" viewBox="0 0 ${W * TILE_SIZE} ${H * TILE_SIZE}" style="border: 4px solid #fff; border-radius: 8px; padding: 4px; background: #1a2332;">`;
+  // Draw tiles with offset padding - start from padding position
+  for (const tile of world.tiles) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${terrainColors[tile.terrain] || "#333"}"/>`;
   for (const province of world.provinces) {
     const nation = world.nationById.get(province.nationId);
     const nc = nation ? nationColors[nation.id] : "#fff";
@@ -220,7 +223,7 @@ function buildPartialReport(world, simulation, month) {
     <td style="padding:8px;text-align:center">${n.cities}</td><td style="padding:8px;text-align:center">${n.population.toLocaleString()}</td>
     <td style="padding:8px;text-align:center">${n.technologyEra}</td><td style="padding:8px;text-align:center">${n.gold.toLocaleString()}</td>
     <td style="padding:8px;text-align:center">${n.soldiers.toLocaleString()}</td><td style="padding:8px;text-align:center">${n.activeWars}</td></tr>`).join("");
-  return `<!DOCTYPE html><html><head><style>
+return `<!DOCTYPE html><html><head><style>
     body{font-family:Arial,sans-serif;background:#0d1117;color:#e6edf3;margin:20px}
     h1{color:#58a6ff;text-align:center}
     table{width:100%;border-collapse:collapse;margin:20px auto;max-width:1000px}
@@ -232,20 +235,91 @@ function buildPartialReport(world, simulation, month) {
     <div style="color:#8b949e;text-align:center">Seed: ${seed} | Nations: ${world.nations.length} | Executor: LLM (${LLM_PROVIDER}/${LLM_MODEL})</div>
     <table><tr><th>Nation</th><th>Provinces</th><th>Tiles</th><th>Cities</th><th>Population</th><th>Tech Era</th><th>Gold</th><th>Soldiers</th><th>Wars</th></tr>
     ${tableRows}</table>
+    
     <div class="footer">AI Civilization Sandbox v0.4.0 - LLM Powered</div>
   </body></html>`;
 }
 
+function buildAnnualReport(world, simulation, year) {
+  const nations = getNationData();
+  // Build year-based population data from nationHistory
+  const nationHistoryYears = {};
+  // Initialize for all world nations
+  for (const n of world.nations) {
+    nationHistoryYears[n.id] = nationHistory[n.id] || [];
+  }
+  // Collect entries for this specific year
+  const yearEntries = [];
+  for (const n of world.nations) {
+    const entries = nationHistoryYears[n.id].filter((h) => {
+      if (!h || !h.month) return false;
+      return Math.round(h.month / 12) === year;
+    });
+    yearEntries.push(...entries);
+  }
+  const yearLabels = [0, 1, 2, 3].map((y) => String(y));
+  // Get population data for years 0-3 (or available years)
+  const allPopData = yearEntries.map((h) => h.population);
+  const tableRows = nations.map((n) =>
+    `<tr style="border-bottom:1px solid #333"><td style="padding:12px"><span style="color:${n.color};font-weight:bold;font-size:14px">${n.name} ${n.llmLabel}</span></td>
+    <td style="padding:12px;text-align:center">${n.provinces}</td>
+    <td style="padding:12px;text-align:center;background:#161b22;font-weight:bold">${n.tiles.toLocaleString()}</td>
+    <td style="padding:12px;text-align:center">${n.cities}</td>
+    <td style="padding:12px;text-align:center;font-weight:bold">${n.population.toLocaleString()}</td>
+    <td style="padding:12px;text-align:center">${n.technologyEra}</td><td style="padding:12px;text-align:center">${n.gold.toLocaleString()}</td>
+    <td style="padding:12px;text-align:center">${n.soldiers.toLocaleString()}</td><td style="padding:12px;text-align:center">${n.activeWars}</td>
+    <td style="padding:12px;text-align:center">${n.avgCityLevel.toFixed(1)}</td><td style="padding:12px;text-align:center">${n.popGrowth > 0 ? '+' + n.popGrowth.toLocaleString() : n.popGrowth.toLocaleString()}</td>
+    <td style="padding:12px;text-align:center">${n.territoryGrowth > 0 ? '+' + n.territoryGrowth : n.territoryGrowth}</td></tr>`).join("");
+const chartDiv = `<div class="chart-container"><canvas id="popChart" style="width:800;height:400"></canvas></div>
+    <script>
+      const ctx = document.getElementById('popChart').getContext('2d');
+      // Population data for years 0-3
+      const yearLabels = [0, 1, 2, 3];
+      const popData = [${yearEntries.map((h) => {
+        const y = Math.round(h.month / 12);
+        return h.population;
+      }).join(',')}];
+      new Chart(ctx, {type:'line', data:{labels:yearLabels, datasets:[{ label:'Population', data:popData, borderColor:'#58a6ff', backgroundColor:'#58a6ff20', tension:0.3, pointRadius:3 }]}, options:{responsive:true, plugins:{title:{display:true, text:'Population Growth by Year', color:'#58a6ff'}}, scales:{x:{title:{display:true, text:'Year'}, ticks:{color:'#8b949e'}, grid:{color:'#21262d'}}, y:{title:{display:true, text:'Population'}, ticks:{color:'#8b949e'}, callback:v=>v.toLocaleString()}, grid:{color:'#21262d'}}}});
+    </script>`;
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+    body{font-family:Arial,sans-serif;background:#0d1117;color:#e6edf3;margin:0;padding:20px}
+    h1{color:#58a6ff;text-align:center;font-size:28px}
+    h2{color:#58a6ff;margin-top:40px}
+    table{width:100%;border-collapse:collapse;margin:20px auto;max-width:1100px}
+    th{background:#161b22;padding:14px;text-align:center;border-bottom:2px solid #58a6ff;color:#58a6ff;font-size:12px}
+    td{padding:12px;text-align:center;border-bottom:1px solid #21262d}
+    .chart-container{max-width:900px;margin:30px auto;padding:20px;background:#161b22;border-radius:8px}
+    .info{color:#8b949e;font-size:14px;text-align:center;margin:20px}
+    .footer{margin-top:40px;color:#8b949e;font-size:12px;text-align:center;padding:20px}
+  </style><script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script></head><body>
+    <h1>🌍 World Simulation: ${seed}</h1>
+    <div class="info">Seed: ${seed} | Duration: ${monthsToRun} months (${monthsToRun / 12} years) | Nations: ${world.nations.length} | Executor: LLM (${LLM_PROVIDER}/${LLM_MODEL})</div>
+    <h2>Year ${year}</h2>
+
+    <table><tr><th>Nation</th><th>Provinces</th><th>Tiles</th><th>Cities</th><th>Population</th><th>Tech Era</th><th>Gold</th><th>Soldiers</th><th>Wars</th><th>Avg Level</th><th>Pop Growth</th><th>Territory Growth</th></tr>${tableRows}</table>
+    ${chartDiv}
+    <div class="footer">Generated by AI Civilization Sandbox v0.4.0 | ${new Date().toISOString()}</div>
+  </body></html>`;
+}
 function buildFinalReport() {
   const nations = getNationData();
-  const labels = [];
-  for (let i = 0; i <= monthsToRun; i += 5) labels.push(i);
+  // Use existing nationHistory data, grouped by year
+  const allYears = [...new Set(
+    Object.values(nationHistory).flat().map((h) => Math.round(h.month / 12))
+  )].sort((a, b) => a - b);
+  const labels = allYears.map((y) => String(y));
   const datasets = world.nations.map((n) => {
-    const data = nationHistory[n.id].map((h) => h.population);
+    const yearData = Object.values(nationHistory[n.id] || [])
+      .filter((h) => Math.round(h.month / 12) in allYears)
+      .sort((a, b) => Math.round(a.month / 12) - Math.round(b.month / 12));
+    const data = yearData.map((h) => h.population);
     return { label: n.name + " " + n.llmLabel, data, borderColor: n.color, backgroundColor: n.color + "20", tension: 0.3, pointRadius: 3 };
   });
   const territoryDatasets = world.nations.map((n) => {
-    const data = nationHistory[n.id].map((h) => h.tiles);
+    const yearData = Object.values(nationHistory[n.id] || [])
+      .filter((h) => Math.round(h.month / 12) in allYears)
+      .sort((a, b) => Math.round(a.month / 12) - Math.round(b.month / 12));
+    const data = yearData.map((h) => h.tiles);
     return { label: n.name + " " + n.llmLabel + " (tiles)", data, borderColor: n.color, backgroundColor: n.color + "20", tension: 0.3, pointRadius: 3 };
   });
   const chartData = JSON.stringify({ labels, datasets });
@@ -278,8 +352,8 @@ function buildFinalReport() {
     <div class="chart-container"><canvas id="territoryChart"></canvas></div>
     <div class="footer">Generated by AI Civilization Sandbox v0.4.0 | ${new Date().toISOString()}</div>
     <script>
-      new Chart(document.getElementById('popChart').getContext('2d'),{type:'line',data:${chartData},options:{responsive:true,plugins:{title:{display:true,text:'Population Growth',color:'#58a6ff'}},scales:{x:{title:{display:true,text:'Month'},ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{title:{display:true,text:'Population'},ticks:{color:'#8b949e',callback:v=>v.toLocaleString()},grid:{color:'#21262d'}}}}});
-      new Chart(document.getElementById('territoryChart').getContext('2d'),{type:'line',data:${territoryChart},options:{responsive:true,plugins:{title:{display:true,text:'Territory (Tiles) Growth Over Time',color:'#58a6ff'}},scales:{x:{title:{display:true,text:'Month'},ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{title:{display:true,text:'Tiles'},ticks:{color:'#8b949e',callback:v=>v.toLocaleString()},grid:{color:'#21262d'}}}}});
+      new Chart(document.getElementById('popChart').getContext('2d'),{type:'line',data:${chartData},options:{responsive:true,plugins:{title:{display:true,text:'Population Growth',color:'#58a6ff'}},scales:{x:{title:{display:true,text:'Year'},ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{title:{display:true,text:'Population'},ticks:{color:'#8b949e',callback:v=>v.toLocaleString()},grid:{color:'#21262d'}}}}});
+      new Chart(document.getElementById('territoryChart').getContext('2d'),{type:'line',data:${territoryChart},options:{responsive:true,plugins:{title:{display:true,text:'Territory (Tiles) Growth Over Time',color:'#58a6ff'}},scales:{x:{title:{display:true,text:'Year'},ticks:{color:'#8b949e'},grid:{color:'#21262d'}},y:{title:{display:true,text:'Tiles'},ticks:{color:'#8b949e',callback:v=>v.toLocaleString()},grid:{color:'#21262d'}}}}});
     </script>
   </body></html>`;
 }
@@ -287,20 +361,20 @@ function buildFinalReport() {
 try {
   recordSnapshot(0);
   const pngPath0 = await captureWorld(world, simulation, 0);
-  writeFileSync(`${outputDir}/report_year_0.html`, buildPartialReport(world, simulation, 0));
-  const snapshots = [{ month: 0, pngPath: pngPath0 }];
+  writeFileSync(`${outputDir}/report_year_0.html`, buildAnnualReport(world, simulation, 0, pngPath0));
+  const snapshots = [{ month: 0, year: 0, pngPath: pngPath0 }];
 
   const policyHistory = [];
   for (let month = 1; month <= monthsToRun; month += 1) {
     const next = await advanceSimulationTurn(world, simulation, llmExecutor);
     simulation = next;
     policyHistory.push({ month, policies: JSON.parse(JSON.stringify(simulation.nationPolicies)) });
-    if (month % 5 === 0) recordSnapshot(month);
+    if (month % 12 === 0) recordSnapshot(month);
     if (snapshotMonths.includes(month)) {
       const pngPath = await captureWorld(world, simulation, month);
       const year = monthToYear(month);
-      writeFileSync(`${outputDir}/report_year_${year}.html`, buildPartialReport(world, simulation, month));
-      snapshots.push({ month, pngPath });
+      writeFileSync(`${outputDir}/report_year_${year}.html`, buildAnnualReport(world, simulation, year));
+      snapshots.push({ month, year, pngPath });
     }
   }
 
