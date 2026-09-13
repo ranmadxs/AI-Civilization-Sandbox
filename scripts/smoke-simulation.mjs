@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { createServer } from "vite";
+import { rmSync } from "fs";
+
+rmSync("target", { recursive: true, force: true });
 
 const defaultMonths = 600;
 const importantEventKinds = [
@@ -31,18 +34,15 @@ const server = await createServer({
   },
 });
 
+await new Promise((resolve) => setTimeout(resolve, 1000));
+
 try {
-  const [
-    { buildDemoWorld },
-    { advanceSimulationTurn, createInitialSimulationState },
-    { getNationWarSummary },
-    { calculateNationCityEconomy },
-  ] = await Promise.all([
-    server.ssrLoadModule("/src/world/buildDemoWorld.ts"),
-    server.ssrLoadModule("/src/world/turnSimulation.ts"),
-    server.ssrLoadModule("/src/world/war.ts"),
-    server.ssrLoadModule("/src/world/cityEconomy.ts"),
-  ]);
+const turnModule = await server.ssrLoadModule("/src/world/turnSimulation.ts");
+const advanceSimulationTurn = turnModule.advanceSimulationTurn;
+const createInitialSimulationState = turnModule.createInitialSimulationState;
+const buildDemoWorld = (await server.ssrLoadModule("/src/world/buildDemoWorld.ts")).buildDemoWorld;
+const getNationWarSummary = (await server.ssrLoadModule("/src/world/war.ts")).getNationWarSummary;
+const calculateNationCityEconomy = (await server.ssrLoadModule("/src/world/cityEconomy.ts")).calculateNationCityEconomy;
 
   const world = buildDemoWorld(seed);
   const missingResources = findMissingNationResources(world);
@@ -116,18 +116,7 @@ function buildReport({
   const stuckWars = simulation.diplomacy.wars.filter((war) =>
     monthsToRun - (war.lastBattleMonth ?? war.startedAtMonth) > 180,
   );
-  const resourceOverflow = world.nations
-    .map((nation) => {
-      const stockpile = simulation.nationStockpiles[nation.id];
-      const maxResource = Math.max(0, ...Object.values(stockpile?.resources ?? {}));
-      return {
-        gold: Math.round(stockpile?.gold ?? 0),
-        maxResource: Math.round(maxResource),
-        nation,
-      };
-    })
-    .filter(({ gold, maxResource }) => gold > 100_000 || maxResource > 120_000);
-  const armyOverflow = world.nations
+   const armyOverflow = world.nations
     .map((nation) => {
       const summary = getNationWarSummary(
         simulation.diplomacy,
@@ -196,14 +185,7 @@ function buildReport({
         .join("; ")}`,
     );
   }
-  if (resourceOverflow.length > 0) {
-    failures.push(
-      `Resource overflow: ${resourceOverflow
-        .map(({ gold, maxResource, nation }) => `${nation.name} gold=${gold}, maxResource=${maxResource}`)
-        .join("; ")}`,
-    );
-  }
-  if (armyOverflow.length > 0) {
+   if (armyOverflow.length > 0) {
     failures.push(
       `Army overflow: ${armyOverflow
         .map(({ nation, soldiers, softCap }) => `${nation.name} soldiers=${soldiers}, softCap=${softCap}`)

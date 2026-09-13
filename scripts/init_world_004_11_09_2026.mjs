@@ -359,10 +359,7 @@ function buildFinalReport() {
 }
 
 try {
-  recordSnapshot(0);
-  const pngPath0 = await captureWorld(world, simulation, 0);
-  writeFileSync(`${outputDir}/report_year_0.html`, buildAnnualReport(world, simulation, 0, pngPath0));
-  const snapshots = [{ month: 0, year: 0, pngPath: pngPath0 }];
+  const snapshots = [];
 
   const policyHistory = [];
   for (let month = 1; month <= monthsToRun; month += 1) {

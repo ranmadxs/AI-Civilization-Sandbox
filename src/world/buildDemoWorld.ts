@@ -488,7 +488,7 @@ function createCity(
   const level = clampInt((isCapital ? 3 : 1) + terrainLevelBonus + resourceLevelBonus, 1, 5);
   const provinceTileCount = province.tileCount;
   const populationBase = isCapital ? 8000 : 2000;
-  const populationNoise = 0.15 + randomAt(tile.x, tile.y, seedHash + 5200) * 0.2;
+  const populationNoise = 0.78 + randomAt(tile.x, tile.y, seedHash + 5200) * 0.2;
   const maxPopulation = provinceTileCount * TILE_POP_CAP;
   const initialPopulation = Math.round(populationBase * level * populationNoise);
 

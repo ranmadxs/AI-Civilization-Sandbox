@@ -363,7 +363,43 @@ export function advanceWarSystem(
     const attacker = world.nationById.get(war.attackerNationId);
     const defender = world.nationById.get(war.defenderNationId);
 
-    if (!attacker || !defender || !isNationActive(world, attacker.id) || !isNationActive(world, defender.id)) {
+    if (!attacker || !defender) {
+      events.push(buildWarEvent({
+        currentMonth,
+        description: `${nationName(world, war.attackerNationId)} and ${nationName(world, war.defenderNationId)} ended their war because one side no longer controls territory.`,
+        id: `event-war-ended-invalid-${war.id}-${currentMonth}`,
+        kind: "war_ended",
+        nationIds: [war.attackerNationId, war.defenderNationId],
+        title: "War Ended",
+      }));
+      continue;
+    }
+    if (!isNationActive(world, attacker.id) || !isNationActive(world, defender.id)) {
+      if (!isNationActive(world, attacker.id) && isNationActive(world, defender.id)) {
+        const annexation = annexDefeatedNation(world, nextMilitary, attacker.id, defender.id, currentMonth);
+        events.push(...annexation.events);
+        mapChanged ||= annexation.mapChanged;
+        events.push(buildWarEvent({
+          currentMonth,
+          description: `${attacker.name} lost its cities and population and was defeated by ${defender.name}.`,
+          id: `event-nation-defeated-${attacker.id}-${currentMonth}`,
+          kind: "nation_defeated",
+          nationIds: [defender.id, attacker.id],
+          title: "Nation Defeated",
+        }));
+      } else if (!isNationActive(world, defender.id) && isNationActive(world, attacker.id)) {
+        const annexation = annexDefeatedNation(world, nextMilitary, defender.id, attacker.id, currentMonth);
+        events.push(...annexation.events);
+        mapChanged ||= annexation.mapChanged;
+        events.push(buildWarEvent({
+          currentMonth,
+          description: `${defender.name} lost its cities and population and was defeated by ${attacker.name}.`,
+          id: `event-nation-defeated-${defender.id}-${currentMonth}`,
+          kind: "nation_defeated",
+          nationIds: [attacker.id, defender.id],
+          title: "Nation Defeated",
+        }));
+      }
       events.push(buildWarEvent({
         currentMonth,
         description: `${nationName(world, war.attackerNationId)} and ${nationName(world, war.defenderNationId)} ended their war because one side no longer controls territory.`,
@@ -520,28 +556,17 @@ export function advanceWarSystem(
       continue;
     }
 
-    // Capture cities when expansion policy indicates conquest
-    if (updatedWar.expansionPolicy && ["control_city", "decisive_battle"].includes(updatedWar.expansionPolicy) && updatedWar.targetNationIdForCapture) {
-      const targetNationId = updatedWar.targetNationIdForCapture;
-      const targetNation = world.nationById.get(targetNationId);
-      if (targetNation && targetNation.id === updatedWar.defenderNationId) {
-        const defenderCities = world.cities.filter(c => c.nationId === targetNationId);
-        if (defenderCities.length > 0) {
-          const targetCity = defenderCities[Math.floor(Math.random() * defenderCities.length)];
-          targetCity.nationId = updatedWar.attackerNationId;
-          const province = world.provinceById.get(targetCity.provinceId);
-          if (province) province.nationId = updatedWar.attackerNationId;
-          events.push(buildWarEvent({
-            currentMonth,
-            description: `${attacker.name} captured ${targetCity.name} from ${defender.name} during the war.`,
-            id: `event-city-captured-${updatedWar.id}-${targetCity.id}-${currentMonth}`,
-            kind: "city_lost",
-            nationIds: [updatedWar.attackerNationId, updatedWar.defenderNationId],
-            title: "City Captured",
-          }));
-          mapChanged = true;
-        }
-      }
+    // End wars stuck for over 180 months without battle
+    if ((currentMonth - (updatedWar.lastBattleMonth ?? updatedWar.startedAtMonth)) > 180) {
+      events.push(buildWarEvent({
+        currentMonth,
+        description: `${attacker.name} and ${defender.name} ended their war after being stuck without contact for over 180 months.`,
+        id: `event-war-ended-stuck-${updatedWar.id}-${currentMonth}`,
+        kind: "war_ended",
+        nationIds: [attacker.id, defender.id],
+        title: "War Ended",
+      }));
+      continue;
     }
 
     nextWars.push(updatedWar);

@@ -41,7 +41,7 @@ export function calculateCityEconomy(city: City, world: World): CityEconomy {
   const effectiveFood = grainTiles.length * FOOD_PER_GRAIN_TILE * Math.max(0, 1 - densityRatio);
   const foodCapacity = effectiveFood * POP_PER_FOOD;
   const housingCapacity = city.level * HOUSING_CAP_PER_LEVEL;
-  const tileCapacity = Math.min(foodCapacity, housingCapacity);
+  const tileCapacity = grainTiles.length > 0 ? Math.min(foodCapacity, housingCapacity) : provinceTiles.length * MAX_DENSITY_PER_TILE;
   const cappedPopulation = Math.min(city.population, tileCapacity);
   const monthlyGold = Math.round(
     cappedPopulation / 950 +
