@@ -83,7 +83,7 @@ function buildAppShellClassName(isPanelOpen: boolean, isEventPanelOpen: boolean)
 
 export default function App() {
   const appRootRef = useRef<HTMLElement>(null);
-  const [language, setLanguage] = useState<Language>("zh");
+  const [language, setLanguage] = useState<Language>("es");
   const [activeSurface, setActiveSurface] = useState<AppSurface>("menu");
   const [worldRevision, setWorldRevision] = useState(0);
   const [mapMode, setMapMode] = useState<MapMode>("political");
@@ -266,7 +266,7 @@ export default function App() {
           ? "configurationSurface"
           : buildAppShellClassName(isPanelOpen, isEventPanelOpen)}
       ref={appRootRef}
-      lang={language === "zh" ? "zh-CN" : "en"}
+      lang={language === "zh" ? "zh-CN" : language === "es" ? "es" : "en"}
     >
       {activeSurface === "menu" ? (
         <MainMenu
@@ -347,13 +347,14 @@ export default function App() {
                 <header>
                   <p className="eyebrow">AI Civilization Sandbox</p>
                   <h1>World Observer</h1>
-                  <label className="languageControl">
-                    <span>{language === "zh" ? "游戏语言" : "Game Language"}</span>
+<label className="languageControl">
+                    <span>{language === "zh" ? "游戏语言" : language === "es" ? "Idioma del Juego" : "Game Language"}</span>
                     <select value={language} onChange={(event) => setLanguage(event.target.value as Language)}>
-                      <option value="zh">中文</option>
-                      <option value="en">English</option>
+                        <option value="es">Español</option>
+                        <option value="zh">中文</option>
+                        <option value="en">English</option>
                     </select>
-                  </label>
+</label>
                   <button
                     className="aiConfigEntry"
                     onClick={() => {
@@ -734,7 +735,7 @@ function NationDetailPanel({
         <section className="defeatedNationNotice">
           <h2>Nation Defeated</h2>
           <p><span>Defeated At</span><strong>{stats.defeatRecord ? formatWorldTime(stats.defeatRecord.defeatedAtMonth) : "Unknown"}</strong></p>
-          <p><span>Destroyed By</span><strong>{victor?.name ?? "Unknown"}</strong></p>
+          <p><span>Destroyed By</span><strong>{victor ? victor?.name ?? "Unknown" : "Unknown"}</strong></p>
         </section>
       </section>
     );
@@ -1202,7 +1203,7 @@ function PolicyRow({
         {policy.label}
         {(targetNation || policy.targetResource) && (
           <small>
-            {targetNation?.name}
+            {targetNation ? targetNation?.name : ""}
             {targetNation && policy.targetResource ? " / " : ""}
             {policy.targetResource ? formatResourceName(policy.targetResource) : ""}
           </small>
@@ -1232,8 +1233,8 @@ function SpyMissionRows({ missions }: { missions: NationPolicyState["spyMissions
               <em>{mission.rationale}</em>
             </span>
             <b>
-              {targetNation?.name ?? "No target"}
-              {secondaryTarget && <small>vs {secondaryTarget.name}</small>}
+              {targetNation ? targetNation?.name : "No target"}
+              {secondaryTarget && <small>vs {secondaryTarget?.name}</small>}
             </b>
           </p>
         );
@@ -1261,7 +1262,7 @@ function CityRows({
           <>
             <span>
               <strong>{city.name}</strong>
-              <em>{province?.name ?? "Unknown province"}</em>
+              <em>{province ? province?.name ?? "Unknown province" : "Unknown province"}</em>
             </span>
             <b>
               {city.isCapital ? "Capital" : `Lv ${city.level}`}
@@ -1306,8 +1307,8 @@ function RelationRows({
         const nationA = world.nationById.get(relation.nationAId);
         const nationB = world.nationById.get(relation.nationBId);
         const label = otherId
-          ? world.nationById.get(otherId)?.name ?? "Unknown nation"
-          : `${nationA?.name ?? "Unknown"} / ${nationB?.name ?? "Unknown"}`;
+          ? world.nationById.get(otherId) ? world.nationById.get(otherId)?.name : "Unknown nation"
+          : `${nationA ? nationA?.name : "Unknown"} / ${nationB ? nationB?.name : "Unknown"}`;
 
         return (
           <p key={`${relation.nationAId}-${relation.nationBId}`}>
@@ -1531,6 +1532,9 @@ function buildProvinceStats(provinceId: string | undefined) {
     return undefined;
   }
 
+  if (!province.nationId) {
+    return undefined;
+  }
   const nation = world.nationById.get(province.nationId);
   if (!nation) {
     return undefined;

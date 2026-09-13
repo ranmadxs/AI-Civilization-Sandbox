@@ -7,6 +7,7 @@ export type Nation = {
   name: string;
   nameEn: string;
   nameZh: string;
+  nameEs: string;
   nameBaseId: string;
   governmentFormId: string;
   color: string;
@@ -20,7 +21,8 @@ export type Province = {
   name: string;
   nameEn: string;
   nameZh: string;
-  nationId: string;
+  nameEs: string;
+  nationId: string | undefined;
   centerX: number;
   centerY: number;
   tileCount: number;
@@ -42,6 +44,7 @@ export type City = {
   name: string;
   nameEn: string;
   nameZh: string;
+  nameEs: string;
   nameId: string;
   nationId: string;
   provinceId: string;

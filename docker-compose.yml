@@ -14,6 +14,9 @@ services:
     environment:
       - PORT=5173
       - HOST=0.0.0.0
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_API_KEY=${LLM_API_KEY}
     command: pnpm dev --host 0.0.0.0
 
   build:
@@ -29,6 +32,10 @@ services:
       context: .
       dockerfile: Dockerfile
       target: smoke
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_API_KEY=${LLM_API_KEY}
     command: pnpm smoke:simulation
 
   preview:

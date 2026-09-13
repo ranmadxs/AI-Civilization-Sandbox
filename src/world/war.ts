@@ -172,6 +172,14 @@ export function buildInitialMilitaryState(world: World): MilitaryState {
       const cities = world.cities.filter((city) => city.nationId === nation.id);
       const units = buildInitialUnits(calculateNationCityEconomy(nation.id, world).army);
       const cityGarrisons = distributeUnitsToCities(units, cities);
+      const finalUnits = Object.values(cityGarrisons).reduce(
+        (sum, g) => {
+          const next = { ...sum };
+          for (const type of unitTypes) { next[type] += g[type]; }
+          return next;
+        },
+        emptyUnits(),
+      );
 
       return [
         nation.id,
@@ -181,7 +189,7 @@ export function buildInitialMilitaryState(world: World): MilitaryState {
           morale: 0.92,
           nationId: nation.id,
           recruitmentQueue: [],
-          units,
+          units: finalUnits,
         },
       ];
     }),
@@ -355,7 +363,43 @@ export function advanceWarSystem(
     const attacker = world.nationById.get(war.attackerNationId);
     const defender = world.nationById.get(war.defenderNationId);
 
-    if (!attacker || !defender || !isNationActive(world, attacker.id) || !isNationActive(world, defender.id)) {
+    if (!attacker || !defender) {
+      events.push(buildWarEvent({
+        currentMonth,
+        description: `${nationName(world, war.attackerNationId)} and ${nationName(world, war.defenderNationId)} ended their war because one side no longer controls territory.`,
+        id: `event-war-ended-invalid-${war.id}-${currentMonth}`,
+        kind: "war_ended",
+        nationIds: [war.attackerNationId, war.defenderNationId],
+        title: "War Ended",
+      }));
+      continue;
+    }
+    if (!isNationActive(world, attacker.id) || !isNationActive(world, defender.id)) {
+      if (!isNationActive(world, attacker.id) && isNationActive(world, defender.id)) {
+        const annexation = annexDefeatedNation(world, nextMilitary, attacker.id, defender.id, currentMonth);
+        events.push(...annexation.events);
+        mapChanged ||= annexation.mapChanged;
+        events.push(buildWarEvent({
+          currentMonth,
+          description: `${attacker.name} lost its cities and population and was defeated by ${defender.name}.`,
+          id: `event-nation-defeated-${attacker.id}-${currentMonth}`,
+          kind: "nation_defeated",
+          nationIds: [defender.id, attacker.id],
+          title: "Nation Defeated",
+        }));
+      } else if (!isNationActive(world, defender.id) && isNationActive(world, attacker.id)) {
+        const annexation = annexDefeatedNation(world, nextMilitary, defender.id, attacker.id, currentMonth);
+        events.push(...annexation.events);
+        mapChanged ||= annexation.mapChanged;
+        events.push(buildWarEvent({
+          currentMonth,
+          description: `${defender.name} lost its cities and population and was defeated by ${attacker.name}.`,
+          id: `event-nation-defeated-${defender.id}-${currentMonth}`,
+          kind: "nation_defeated",
+          nationIds: [attacker.id, defender.id],
+          title: "Nation Defeated",
+        }));
+      }
       events.push(buildWarEvent({
         currentMonth,
         description: `${nationName(world, war.attackerNationId)} and ${nationName(world, war.defenderNationId)} ended their war because one side no longer controls territory.`,
@@ -509,6 +553,19 @@ export function advanceWarSystem(
     }
 
     if (endedWar) {
+      continue;
+    }
+
+    // End wars stuck for over 180 months without battle
+    if ((currentMonth - (updatedWar.lastBattleMonth ?? updatedWar.startedAtMonth)) > 180) {
+      events.push(buildWarEvent({
+        currentMonth,
+        description: `${attacker.name} and ${defender.name} ended their war after being stuck without contact for over 180 months.`,
+        id: `event-war-ended-stuck-${updatedWar.id}-${currentMonth}`,
+        kind: "war_ended",
+        nationIds: [attacker.id, defender.id],
+        title: "War Ended",
+      }));
       continue;
     }
 
@@ -671,12 +728,32 @@ export function calculateMilitaryPower(military: MilitaryState, nationId: string
 function buildInitialUnits(armyScore: number): ArmyUnits {
   const soldiers = Math.max(90, Math.round(armyScore / 28));
 
-  return {
-    heavyCavalry: Math.round(soldiers * 0.07),
-    infantry: Math.round(soldiers * 0.43),
-    lightCavalry: Math.round(soldiers * 0.12),
-    militia: Math.round(soldiers * 0.38),
+  return distributeRound(
+    {
+      heavyCavalry: soldiers * 0.07,
+      infantry: soldiers * 0.43,
+      lightCavalry: soldiers * 0.12,
+      militia: soldiers * 0.38,
+    },
+    soldiers,
+  );
+}
+
+function distributeRound(raw: ArmyUnits, total: number): ArmyUnits {
+  const result: ArmyUnits = {
+    heavyCavalry: Math.floor(raw.heavyCavalry),
+    infantry: Math.floor(raw.infantry),
+    lightCavalry: Math.floor(raw.lightCavalry),
+    militia: Math.floor(raw.militia),
   };
+  let remainder = total - totalUnits(result);
+  const types: UnitType[] = ["heavyCavalry", "infantry", "lightCavalry", "militia"];
+  const indexed = types.map((t) => ({ type: t, frac: raw[t] - Math.floor(raw[t]) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let i = 0; i < remainder && i < indexed.length; i += 1) {
+    result[indexed[i].type] += 1;
+  }
+  return result;
 }
 
 function queueRecruitmentForPolicy(
@@ -1563,12 +1640,30 @@ function distributeUnitsToCities(units: ArmyUnits, cities: Array<{ id: string; i
 
   for (const city of cities) {
     const weight = (city.level + (city.isCapital ? 3 : 1)) / totalWeight;
-    garrisons[city.id] = {
-      heavyCavalry: Math.round(units.heavyCavalry * weight),
-      infantry: Math.round(units.infantry * weight),
-      lightCavalry: Math.round(units.lightCavalry * weight),
-      militia: Math.round(units.militia * weight),
+    const cityUnits: ArmyUnits = {
+      heavyCavalry: units.heavyCavalry * weight,
+      infantry: units.infantry * weight,
+      lightCavalry: units.lightCavalry * weight,
+      militia: units.militia * weight,
     };
+    garrisons[city.id] = cityUnits;
+  }
+
+  const allTypes: UnitType[] = ["heavyCavalry", "infantry", "lightCavalry", "militia"];
+  for (const type of allTypes) {
+    const raw = cities.map((city) => ({ city, value: garrisons[city.id][type] }));
+    const floors = raw.map((r) => Math.floor(r.value));
+    const flooredTotal = floors.reduce((s, f) => s + f, 0);
+    const remainder = units[type] - flooredTotal;
+    const indexed = raw.map((r, i) => ({ index: i, frac: r.value - floors[i] }))
+      .sort((a, b) => b.frac - a.frac);
+    const finalFloors = [...floors];
+    for (let i = 0; i < remainder && i < indexed.length; i += 1) {
+      finalFloors[indexed[i].index] += 1;
+    }
+    cities.forEach((city, i) => {
+      garrisons[city.id][type] = finalFloors[i];
+    });
   }
 
   return garrisons;

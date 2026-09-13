@@ -15,7 +15,10 @@ export type NationCityEconomy = {
   maxDefense: number;
 };
 
-const POP_PER_TILE = 20000;
+const FOOD_PER_GRAIN_TILE = 3000;
+const POP_PER_FOOD = 1000;
+const HOUSING_CAP_PER_LEVEL = 20000;
+const MAX_DENSITY_PER_TILE = 20000;
 
 export function calculateCityEconomy(city: City, world: World): CityEconomy {
   const tile = world.tiles.find((worldTile) => worldTile.x === city.x && worldTile.y === city.y);
@@ -30,7 +33,15 @@ export function calculateCityEconomy(city: City, world: World): CityEconomy {
   const capitalGold = city.isCapital ? 18 : 0;
   const capitalArmy = city.isCapital ? 220 : 0;
   const capitalDefense = city.isCapital ? 2 : 0;
-  const tileCapacity = provinceTiles.length * POP_PER_TILE;
+  const grainTiles = provinceTiles.filter((t) => t.resource === "grain");
+  const provinceCities = world.cities.filter((c) => c.provinceId === city.provinceId);
+  const provincePopulation = provinceCities.reduce((sum, c) => sum + c.population, 0);
+  const maxProvincePopulation = provinceTiles.length * MAX_DENSITY_PER_TILE;
+  const densityRatio = Math.min(provincePopulation / Math.max(maxProvincePopulation, 1), 1);
+  const effectiveFood = grainTiles.length * FOOD_PER_GRAIN_TILE * Math.max(0, 1 - densityRatio);
+  const foodCapacity = effectiveFood * POP_PER_FOOD;
+  const housingCapacity = city.level * HOUSING_CAP_PER_LEVEL;
+  const tileCapacity = grainTiles.length > 0 ? Math.min(foodCapacity, housingCapacity) : provinceTiles.length * MAX_DENSITY_PER_TILE;
   const cappedPopulation = Math.min(city.population, tileCapacity);
   const monthlyGold = Math.round(
     cappedPopulation / 950 +

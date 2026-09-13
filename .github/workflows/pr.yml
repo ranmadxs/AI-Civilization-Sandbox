@@ -29,10 +29,9 @@ jobs:
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
             echo "Comparando package.json entre ${BASE_SHA:0:7} (base) y ${HEAD_SHA:0:7} (head)"
-            if git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -q '^package\.json$'; then
-              echo "✅ package.json modificado en el PR"
-              git diff "${BASE_SHA}" "${HEAD_SHA}" -- package.json
-            else
+            
+            # Verificar que package.json fue modificado
+            if ! git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -q '^package\.json$'; then
               echo "❌ package.json NO fue modificado en este PR"
               echo ""
               echo "Política del proyecto: TODO PR debe bumbear la versión en"
@@ -44,6 +43,45 @@ jobs:
               echo "Editá package.json y bumbeá version."
               exit 1
             fi
+            
+            # Extraer y mostrar la versión actual y nueva
+            BASE_VERSION=$(git show "${BASE_SHA}:package.json" | grep '"version"' | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
+            HEAD_VERSION=$(git show "${HEAD_SHA}:package.json" | grep '"version"' | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
+            
+            echo "📦 Versión base:   $BASE_VERSION"
+            echo "📦 Versión HEAD:   $HEAD_VERSION"
+            echo "📦 Cambio de versión: $HEAD_VERSION"
+            
+            # Validar formato semver X.Y.Z
+            if ! echo "$HEAD_VERSION" | grep -qP '^\d+\.\d+\.\d+$'; then
+              echo "❌ La versión $HEAD_VERSION no sigue el formato semver (X.Y.Z)"
+              echo "Debe ser X.Y.Z donde X, Y, Z son números enteros"
+              exit 1
+            fi
+            
+            # Calcular los dígitos cambiados
+            BASE_MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
+            BASE_MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
+            BASE_PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
+            HEAD_MAJOR=$(echo "$HEAD_VERSION" | cut -d. -f1)
+            HEAD_MINOR=$(echo "$HEAD_VERSION" | cut -d. -f2)
+            HEAD_PATCH=$(echo "$HEAD_VERSION" | cut -d. -f3)
+            
+            MAJOR_DIFF=$((HEAD_MAJOR - BASE_MAJOR))
+            MINOR_DIFF=$((HEAD_MINOR - BASE_MINOR))
+            PATCH_DIFF=$((HEAD_PATCH - BASE_PATCH))
+            
+            echo "📈 Cambios: major=$MAJOR_DIFF, minor=$MINOR_DIFF, patch=$PATCH_DIFF"
+            
+            # Validar lógica semver
+            if [ "$MAJOR_DIFF" -gt 1 ] || [ "$MINOR_DIFF" -gt 1 ] || [ "$PATCH_DIFF" -gt 1 ]; then
+              echo "⚠️  Cambio de versión inusual. Verifique que el bump sea correcto:"
+              echo "   - major (X+1.0.0) solo para cambios rompes Breaking"
+              echo "   - minor (X.Y+1.0) para nuevas funcionalidades"
+              echo "   - patch (X.Y.Z+1) para correcciones de bug"
+            fi
+            
+            echo "✅ package.json modificado y versión semver válida: $HEAD_VERSION"
 
   build-check:
     name: Build & TypeScript Check
