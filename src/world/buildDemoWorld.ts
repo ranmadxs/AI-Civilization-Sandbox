@@ -728,11 +728,12 @@ function sampleClimate(x: number, y: number, seedHash: number) {
   const ny = y / (height - 1);
   const dx = Math.abs(nx - 0.5) * 2;
   const dy = Math.abs(ny - 0.5) * 2;
-  const continentalShelf = 1 - (dx ** 2.5 * 0.56 + dy ** 2.2 * 0.5);
+   const continentalShelf = 1 - (dx ** 2.5 * 0.56 + dy ** 2.2 * 0.5);
   const broadLand = fbm(x * 0.018, y * 0.018, seedHash, 4);
   const detail = fbm(x * 0.075 + 90, y * 0.075 - 30, seedHash + 37, 4);
   const ridge = Math.abs(fbm(x * 0.05 - 10, y * 0.05 + 70, seedHash + 91, 3) - 0.5) * 2;
-  const elevation = clamp01(continentalShelf * 0.57 + broadLand * 0.58 + detail * 0.18 + ridge * 0.15 - 0.2);
+  const landFactor = 0.5 + continentalShelf * 0.5;
+  const elevation = clamp01(continentalShelf * 0.85 + broadLand * 0.35 * landFactor + detail * 0.18 * landFactor + ridge * 0.15 - 0.2);
   const latitude = Math.abs(ny - 0.5) * 2;
   const temperature = clamp01(1 - latitude * 0.82 - elevation * 0.22 + fbm(x * 0.04, y * 0.04, seedHash + 500, 3) * 0.18);
   const oceanBonus = elevation < 0.46 ? 0.18 : 0;
@@ -742,10 +743,13 @@ function sampleClimate(x: number, y: number, seedHash: number) {
       oceanBonus,
   );
 
-  return { elevation, temperature, moisture };
+  return { elevation, temperature, moisture, continentalShelf };
 }
 
 function terrainFromSample(sample: ReturnType<typeof sampleClimate>): Terrain {
+   if (sample.continentalShelf < 0.3) {
+    return "ocean";
+  }
   if (sample.elevation < 0.39) {
     return "ocean";
   }
