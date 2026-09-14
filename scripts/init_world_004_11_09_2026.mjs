@@ -154,6 +154,7 @@ function generateWorldSVG(world) {
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * TILE_SIZE}" height="${H * TILE_SIZE}" viewBox="0 0 ${W * TILE_SIZE} ${H * TILE_SIZE}" style="border: 4px solid #fff; border-radius: 8px; padding: 4px; background: #1a2332;">`;
   // Draw tiles with offset padding - start from padding position
   for (const tile of world.tiles) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${terrainColors[tile.terrain] || "#333"}"/>`;
+  for (const tile of world.tiles) { if (tile.river) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="#1a5276" opacity="0.7"/>`; }
   for (const province of world.provinces) {
     const nation = world.nationById.get(province.nationId);
     const nc = nation ? nationColors[nation.id] : "#fff";

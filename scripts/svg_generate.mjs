@@ -75,6 +75,7 @@ function generateWorldSVG(world) {
   svg += `<rect x="0" y="0" width="${mapPixelW}" height="${mapPixelH}" fill="#132028"/>`;
 
   for (const tile of world.tiles) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${terrainColors[tile.terrain] || "#333"}"/>`;
+    for (const tile of world.tiles) { if (tile.river) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="#1a5276" opacity="0.7"/>`; }
 
   for (const nid of Object.keys(nationTiles).sort()) {
     const nation = world.nationById.get(nid);

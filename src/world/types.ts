@@ -35,6 +35,7 @@ export type Tile = {
   elevation: number;
   temperature: number;
   moisture: number;
+  river?: boolean;
   provinceId?: string;
   resource?: Resource;
 };
