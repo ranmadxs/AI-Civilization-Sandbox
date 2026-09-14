@@ -3,11 +3,12 @@ import { resourceTypes } from "./economy";
 import { isNationActive } from "./nationStatus";
 import { getNationRelationsFor, otherNationId, type NationRelations } from "./relationships";
 import { calculateNationMonthlyIncome, type NationStockpiles } from "./settlement";
-import type { Resource, World } from "./types";
+import type { Resource, Tile, World } from "./types";
+import { buildProvinceAdjacency } from "./war";
 
 export const policyDecisionIntervalMonths = 2;
 
-export type ExpansionPolicy = "none" | "control_city" | "control_resource" | "decisive_battle";
+export type ExpansionPolicy = "none" | "control_city" | "control_resource" | "decisive_battle" | "peaceful_expand";
 export type EconomyPolicy = "construction" | "recovery" | "army_building";
 export type DiplomacyPolicy =
   | "none"
@@ -48,6 +49,7 @@ export type NationPolicyState = {
 export type NationPolicies = Record<string, NationPolicyState>;
 
 const expansionLabels: Record<ExpansionPolicy, string> = {
+  peaceful_expand: "Peaceful Expansion",
   control_city: "Control Cities",
   control_resource: "Control Resources",
   decisive_battle: "Decisive Battle",
@@ -123,7 +125,7 @@ export function advanceNationPolicies(
   return changed ? nextPolicies : currentPolicies;
 }
 
-function decideNationPolicy(
+export function decideNationPolicy(
   world: World,
   relations: NationRelations,
   stockpiles: NationStockpiles,
@@ -142,7 +144,7 @@ function decideNationPolicy(
   };
 }
 
-function buildNationPolicyProfile(
+export function buildNationPolicyProfile(
   world: World,
   relations: NationRelations,
   stockpiles: NationStockpiles,
@@ -189,15 +191,23 @@ function buildNationPolicyProfile(
     stockpile,
     strength,
     worstRelation,
+    world,
   };
 }
 
 function decideExpansion(profile: ReturnType<typeof buildNationPolicyProfile>): PolicyDirection<ExpansionPolicy> {
   if (profile.adjacentRelations.length === 0) {
+    if (profile.stockpile.gold >= 1) {
+      return {
+        policy: "peaceful_expand",
+        label: expansionLabels.peaceful_expand,
+        rationale: "Expanding peacefully by colonizing nearby neutral territory.",
+      };
+    }
     return {
       policy: "none",
       label: expansionLabels.none,
-      rationale: "No adjacent nations to expand toward.",
+      rationale: "No adjacent nations and not enough gold for peaceful expansion.",
     };
   }
 
@@ -213,6 +223,15 @@ function decideExpansion(profile: ReturnType<typeof buildNationPolicyProfile>): 
     };
   }
   const targetNationId = otherNationId(targetRelation, profile.nationId);
+
+  if (profile.stockpile.gold >= 1) {
+    return {
+      policy: "peaceful_expand",
+      label: expansionLabels.peaceful_expand,
+      rationale: "Expanding peacefully through diplomacy and gold payment.",
+      targetNationId,
+    };
+  }
 
   if (profile.resourceDiversity < 4) {
     return {
@@ -266,10 +285,11 @@ function decideEconomy(profile: ReturnType<typeof buildNationPolicyProfile>): Po
 }
 
 function decideDiplomacy(profile: ReturnType<typeof buildNationPolicyProfile>): PolicyDirection<DiplomacyPolicy> {
+  const canPeacefulExpand = profile.stockpile.gold >= 1;
   const adjacentNations = profile.adjacentRelations.map((r) => otherNationId(r, profile.nationId));
   const hostileAdjacent = profile.adjacentRelations.filter((r) => r.attitude <= -10);
 
-  if (hostileAdjacent.length > 0) {
+  if (hostileAdjacent.length > 0 && !canPeacefulExpand) {
     const target = hostileAdjacent[0];
     const targetNationId = otherNationId(target, profile.nationId);
     return {
@@ -281,7 +301,7 @@ function decideDiplomacy(profile: ReturnType<typeof buildNationPolicyProfile>): 
   }
 
   const borderOpportunity = profile.adjacentRelations.find((relation) => relation.attitude <= 8);
-  if (borderOpportunity) {
+  if (borderOpportunity && !canPeacefulExpand) {
     const targetNationId = otherNationId(borderOpportunity, profile.nationId);
     return {
       policy: "declare_war",
@@ -383,7 +403,7 @@ function decideSpyMissions(profile: ReturnType<typeof buildNationPolicyProfile>)
   return missions;
 }
 
-function getAdjacentNationIds(world: World, nationId: string) {
+export function getAdjacentNationIds(world: World, nationId: string) {
   const adjacentNationIds = new Set<string>();
   const tileByCoord = new Map(world.tiles.map((tile) => [`${tile.x},${tile.y}`, tile]));
 
@@ -403,4 +423,61 @@ function getAdjacentNationIds(world: World, nationId: string) {
   }
 
   return adjacentNationIds;
+}
+
+
+export function getAdjacentTiles(world: World, nationId: string): Tile[] {
+  const adjacency = buildProvinceAdjacency(world);
+  const nationProvinceIds = new Set(world.provinces.filter(p => p.nationId === nationId).map(p => p.id));
+  const adjacentTiles: Tile[] = [];
+  for (const provinceId of nationProvinceIds) {
+    for (const neighborId of adjacency.get(provinceId) ?? []) {
+      const neighbor = world.provinceById.get(neighborId);
+      if (neighbor) {
+        const tile = world.tiles.find(t => t.provinceId === neighborId);
+        if (tile && !adjacentTiles.find(t => t.provinceId === neighborId)) {
+          adjacentTiles.push(tile);
+        }
+      }
+    }
+  }
+  return adjacentTiles;
+}
+
+export function getAdjacentEnemyTiles(world: World, nationId: string, profile: ReturnType<typeof buildNationPolicyProfile>): Tile[] {
+  const adjacency = buildProvinceAdjacency(world);
+  const nationProvinceIds = new Set(world.provinces.filter(p => p.nationId === nationId).map(p => p.id));
+  const enemyTiles: Tile[] = [];
+  for (const provinceId of nationProvinceIds) {
+    for (const neighborId of adjacency.get(provinceId) ?? []) {
+      const neighbor = world.provinceById.get(neighborId);
+      if (neighbor && neighbor.nationId !== undefined && neighbor.nationId !== nationId) {
+        const tile = world.tiles.find(t => t.provinceId === neighborId);
+        if (tile && !enemyTiles.find(t => t.provinceId === neighborId)) {
+          enemyTiles.push(tile);
+        }
+      }
+    }
+  }
+  return enemyTiles;
+}
+
+export function calculatePeacefulExpandCost(tile: Tile, world: World): { gold: number; population: number; tribute: number; type: "neutral" | "province" } {
+  const province = world.provinces.find(p => p.id === tile.provinceId);
+  const cityCount = world.cities.filter(c => c.provinceId === tile.provinceId).length;
+  const tilePopulation = province ? province.population : 0;
+  const isNeutral = !province || province.nationId === undefined;
+
+  if (isNeutral) {
+    return { gold: 1, population: 0, tribute: 0, type: "neutral" };
+  }
+
+  const populationTribute = Math.round(tilePopulation * 0.05 * 100) / 100;
+  const cityTribute = cityCount * 30;
+
+  return { gold: 1, population: tilePopulation, tribute: populationTribute + cityTribute, type: "province" };
+}
+
+export function canAffordPeacefulExpand(cost: {gold: number; population: number; tribute: number; type: string}, stockpile: {gold: number; resources: Record<string, number>}): boolean {
+  return stockpile.gold >= cost.gold;
 }

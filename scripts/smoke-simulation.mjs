@@ -8,6 +8,7 @@ rmSync("target", { recursive: true, force: true });
 const defaultMonths = 600;
 const importantEventKinds = [
   "war_declared",
+  "peaceful_expand",
   "battle_fought",
   "province_occupied",
   "city_lost",
@@ -43,6 +44,7 @@ const createInitialSimulationState = turnModule.createInitialSimulationState;
 const buildDemoWorld = (await server.ssrLoadModule("/src/world/buildDemoWorld.ts")).buildDemoWorld;
 const getNationWarSummary = (await server.ssrLoadModule("/src/world/war.ts")).getNationWarSummary;
 const calculateNationCityEconomy = (await server.ssrLoadModule("/src/world/cityEconomy.ts")).calculateNationCityEconomy;
+const createNationAIExecutor = (await server.ssrLoadModule("/src/world/nationAI.ts")).createNationAIExecutor;
 
   const world = buildDemoWorld(seed);
   const missingResources = findMissingNationResources(world);
@@ -58,9 +60,11 @@ const calculateNationCityEconomy = (await server.ssrLoadModule("/src/world/cityE
     const expectedOrder = world.nations
       .filter((nation) => world.cities.some((city) => city.nationId === nation.id))
       .map((nation) => nation.id);
-    const next = await advanceSimulationTurn(world, simulation, async ({ nationId }) => {
-      actionOrder.push(nationId);
-    });
+   const aiExecutor = createNationAIExecutor(world);
+   const next = await advanceSimulationTurn(world, simulation, async (context) => {
+       actionOrder.push(context.nationId);
+       await aiExecutor(context);
+   });
     if (actionOrder.join(",") !== expectedOrder.join(",") || next.elapsedMonths !== month) {
       throw new Error(`第${month}回合未按国家顺序完整执行`);
     }

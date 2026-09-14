@@ -2,8 +2,8 @@ import type { City, MapEdge, Nation, Province, Resource, Terrain, Tile, World } 
 import { resourceTypes } from "./economy";
 import { cityNames, governmentForms, nationNameBases, provinceNames } from "./nameCatalog";
 
-const width = 96;
-const height = 64;
+const width = 192;
+const height = 128;
 const defaultSeed = "observer-world-001";
 const defaultNationCount = 6;
 const targetProvinceCount = 118;

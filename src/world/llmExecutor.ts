@@ -22,6 +22,7 @@ export type LLMDecision = {
   economy: string;
   diplomacy: string;
   targetNationId?: string;
+  targetTileId?: string;
   rationale?: string;
 };
 
@@ -92,6 +93,7 @@ export function createLLMExecutor(configs: NationModelConfigs): NationTurnExecut
         if (target) { decision.targetNationId = target; }
         decisionMap.set(`${context.nationId}_turn_${context.turnNumber}`, decision);
         applyDecisionToWorld(decision, context);
+        console.log(`[${context.nationId}] Turn ${context.turnNumber}: expansion=${decision.expansion}, economy=${decision.economy}, diplomacy=${decision.diplomacy}, target=${decision.targetNationId ?? "null"}, rationale="${decision.rationale ?? ""}"`);
         return;
       } catch (error) {
         if (attempt === MAX_RETRIES * 2) throw error;
@@ -148,6 +150,7 @@ function buildPrompt(context: NationTurnContext, config: NationModelConfig): str
     `  expansion:"control_resource" + targetNationId: Seize resource tiles from that nation.`,
     `  expansion:"decisive_battle" + targetNationId: Launch a full-scale invasion.`,
     `  expansion:"declare_war" + targetNationId: Start a war against that nation.`,
+    `  expansion:"peaceful_expand" + targetNationId: Expand peacefully by paying gold and population. No war needed.`,
     `  expansion:"none": Do not expand militarily this turn.`,
     ``,
     `  economy:"army_building": Build military units (needed before attacking).`,
@@ -179,6 +182,7 @@ function parseDecision(raw: string): LLMDecision | null {
         const parsed = JSON.parse(fallback[0]);
         return {
           expansion: parsed.expansion ?? "none",
+      targetTileId: parsed.targetTileId,
           economy: parsed.economy ?? "construction",
           diplomacy: parsed.diplomacy ?? "none",
           targetNationId: parsed.targetNationId ?? null,
@@ -193,6 +197,7 @@ function parseDecision(raw: string): LLMDecision | null {
     const parsed = JSON.parse(jsonStr);
     return {
       expansion: parsed.expansion ?? "none",
+      targetTileId: parsed.targetTileId,
       economy: parsed.economy ?? "construction",
       diplomacy: parsed.diplomacy ?? "none",
       targetNationId: parsed.targetNationId ?? null,
@@ -230,10 +235,13 @@ function applyDecisionToWorld(decision: LLMDecision, context: NationTurnContext)
       label: expansionPolicy,
       rationale: decision.rationale || "",
       targetNationId: decision.targetNationId || undefined,
+      targetTileId: decision.targetTileId || undefined,
       targetResource: decision.expansion === "control_resource" ? "grain" : undefined,
       decidedAtMonth: context.turnNumber,
       nextDecisionMonth: context.turnNumber + 2,
     };
+  } else if (decision.expansion) {
+    nationPolicies.expansion = { ...nationPolicies.expansion, decidedAtMonth: context.turnNumber, nextDecisionMonth: context.turnNumber + 2 };
   }
 
   if (decision.economy && decision.economy !== "none") {
@@ -244,6 +252,8 @@ function applyDecisionToWorld(decision: LLMDecision, context: NationTurnContext)
       decidedAtMonth: context.turnNumber,
       nextDecisionMonth: context.turnNumber + 2,
     };
+  } else if (decision.economy) {
+    nationPolicies.economy = { ...nationPolicies.economy, decidedAtMonth: context.turnNumber, nextDecisionMonth: context.turnNumber + 2 };
   }
 
   if (decision.diplomacy && decision.diplomacy !== "none") {
@@ -252,10 +262,16 @@ function applyDecisionToWorld(decision: LLMDecision, context: NationTurnContext)
       label: decision.diplomacy,
       rationale: decision.rationale || "",
       targetNationId: decision.targetNationId || undefined,
+      targetTileId: decision.targetTileId || undefined,
       decidedAtMonth: context.turnNumber,
       nextDecisionMonth: context.turnNumber + 2,
     };
+  } else if (decision.diplomacy) {
+    nationPolicies.diplomacy = { ...nationPolicies.diplomacy, decidedAtMonth: context.turnNumber, nextDecisionMonth: context.turnNumber + 2 };
   }
+
+  nationPolicies.decidedAtMonth = context.turnNumber;
+  nationPolicies.nextDecisionMonth = context.turnNumber + 2;
 
   if (decision.targetNationId && (decision.diplomacy === "declare_war" || decision.expansion === "decisive_battle")) {
     sim.events.push({

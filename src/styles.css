@@ -1052,7 +1052,8 @@ select {
   position: relative;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  height: 100%;
+  overflow: visible;
   z-index: 0;
 }
 
@@ -1285,18 +1286,123 @@ select {
   border-color: rgb(185 133 232 / 38%);
 }
 
+.scFrame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 2px solid #00e5ff;
+  box-shadow:
+    0 0 8px #00e5ff88,
+    inset 0 0 8px #00e5ff44,
+    0 0 20px #ff00ff33;
+  background: #0a0e14;
+  border-radius: 2px;
+}
+
+.scFrameTop {
+  position: relative;
+  height: 6px;
+  background: linear-gradient(90deg, #00e5ff 0%, #00e5ff44 30%, #00e5ff33 50%, #00e5ff44 70%, #00e5ff 100%);
+  border-bottom: 1px solid #00e5ff66;
+}
+
+.scFrameBody {
+  display: flex;
+  width: 100%;
+  height: calc(100% - 12px);
+}
+
+.scFrameLeft {
+  width: 4px;
+  background: linear-gradient(180deg, #00e5ff44, #ff00ff33, #00e5ff44);
+  box-shadow: 0 0 6px #00e5ff55;
+  flex-shrink: 0;
+}
+
+.scFrameRight {
+  width: 4px;
+  background: linear-gradient(180deg, #00e5ff44, #ff00ff33, #00e5ff44);
+  box-shadow: 0 0 6px #00e5ff55;
+  flex-shrink: 0;
+}
+
+.scFrameBottom {
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  background: linear-gradient(0deg, #0a0e14 0%, #0d1219 50%, #0a0e14 100%);
+  border-top: 1px solid #00e5ff55;
+  box-shadow: 0 -4px 12px #00e5ff22;
+}
+
+.scFrameBottom .scWorldName {
+  color: #00e5ff;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 0 8px #00e5ffaa, 0 0 16px #00e5ff66;
+  letter-spacing: 1px;
+}
+
+.scFrameBottom .scWorldTime {
+  color: #ff00ff;
+  font-family: "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 0 8px #ff00ffaa, 0 0 16px #ff00ff66;
+  letter-spacing: 1px;
+}
+
+.scCorner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.scCornerTL {
+  border-top: 2px solid #00e5ff;
+  border-left: 2px solid #00e5ff;
+  box-shadow: 0 0 6px #00e5ff88;
+  filter: drop-shadow(0 0 4px #00e5ff);
+}
+
+.scCornerTR {
+  border-top: 2px solid #00e5ff;
+  border-right: 2px solid #00e5ff;
+  box-shadow: 0 0 6px #00e5ff88;
+  filter: drop-shadow(0 0 4px #00e5ff);
+}
+
+.scCornerBL {
+  border-bottom: 2px solid #00e5ff;
+  border-left: 2px solid #00e5ff;
+  box-shadow: 0 0 6px #00e5ff88;
+  filter: drop-shadow(0 0 4px #00e5ff);
+}
+
+.scCornerBR {
+  border-bottom: 2px solid #00e5ff;
+  border-right: 2px solid #00e5ff;
+  box-shadow: 0 0 6px #00e5ff88;
+  filter: drop-shadow(0 0 4px #00e5ff);
+}
+
 .worldMap {
   position: relative;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-  background: #132028;
+  overflow: auto;
+  background: #080c10;
 }
 
 .worldMap canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  width: auto;
+  height: auto;
   cursor: grab;
 }
 
@@ -1668,6 +1774,20 @@ h2 {
   color: #9fb7b1;
   font-size: 11px;
   font-style: normal;
+}
+
+.nationButtonDead {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nationButtonDead:hover {
+  color: #9fb7b1;
+  background: transparent;
+}
+
+.nationButtonDead strong {
+  color: #6b7b72;
 }
 
 .line {

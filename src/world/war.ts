@@ -1,4 +1,5 @@
 import { calculateNationCityEconomy } from "./cityEconomy";
+import { calculateProvinceMilitaryLimit, getAvailableArmySize, hasCitiesForArmy } from "./provinceLimits";
 import type { DiplomacyState, WarState } from "./diplomacy";
 import type { GameEvent } from "./events";
 import { isNationActive, isNationDefeated } from "./nationStatus";
@@ -69,6 +70,7 @@ export type NationMilitary = {
 export type MilitaryState = Record<string, NationMilitary>;
 
 export type WarUpdate = {
+  stockpiles: NationStockpiles;
   diplomacy: DiplomacyState;
   events: GameEvent[];
   mapChanged: boolean;
@@ -118,7 +120,7 @@ export const unitStats: Record<UnitType, UnitStats> = {
     label: "Militia",
     recruitGold: 0.8,
     speed: 1,
-    upkeepGold: 0.4,
+    upkeepGold: 0.001,
   },
   infantry: {
     attack: 7,
@@ -127,7 +129,7 @@ export const unitStats: Record<UnitType, UnitStats> = {
     label: "Infantry",
     recruitGold: 2,
     speed: 1,
-    upkeepGold: 1,
+    upkeepGold: 0.0314,
   },
   lightCavalry: {
     attack: 8,
@@ -136,7 +138,7 @@ export const unitStats: Record<UnitType, UnitStats> = {
     label: "Light Cavalry",
     recruitGold: 3.5,
     speed: 3,
-    upkeepGold: 1.8,
+    upkeepGold: 0.0471,
   },
   heavyCavalry: {
     attack: 12,
@@ -145,7 +147,7 @@ export const unitStats: Record<UnitType, UnitStats> = {
     label: "Heavy Cavalry",
     recruitGold: 6,
     speed: 2,
-    upkeepGold: 3,
+    upkeepGold: 0.07065,
   },
 };
 
@@ -158,7 +160,7 @@ const unitRecruitResourceCosts: Record<UnitType, Partial<Record<Resource, number
 
 const unitMonthlyResourceUpkeep: Record<UnitType, Partial<Record<Resource, number>>> = {
   heavyCavalry: { coal: 0.018, grain: 0.16, iron: 0.035 },
-  infantry: { grain: 0.09, iron: 0.012 },
+  infantry: { grain: 0.051, timber: 0.027, iron: 0.05225, coal: 0.2 },
   lightCavalry: { grain: 0.13, timber: 0.018 },
   militia: { grain: 0.055 },
 };
@@ -207,17 +209,17 @@ export function advanceMilitaryEconomy(
 ): MilitaryEconomyUpdate {
   const events: GameEvent[] = [];
   const nextMilitary = cloneMilitary(currentMilitary);
-  const nextStockpiles: NationStockpiles = Object.fromEntries(
+   const nextStockpiles: NationStockpiles = Object.fromEntries(
     Object.entries(currentStockpiles).map(([nationId, stockpile]) => [
       nationId,
-      { gold: stockpile.gold, resources: { ...stockpile.resources } },
+      { gold: stockpile.gold, water: stockpile.water, resources: { ...stockpile.resources } },
     ]),
   );
 
   for (const nation of world.nations) {
     if (!isNationActive(world, nation.id)) {
       clearNationMilitary(nextMilitary, nation.id);
-      nextStockpiles[nation.id] = { gold: 0, resources: {} };
+      nextStockpiles[nation.id] = { gold: 0, water: 0, resources: {} };
       continue;
     }
 
@@ -231,7 +233,13 @@ export function advanceMilitaryEconomy(
     };
     army = completeRecruitment(world, army, currentMonth, events);
     const stockpile = nextStockpiles[nation.id] ?? { gold: 0, resources: {} };
-    const upkeep = calculateMonthlyUpkeep(army.units) * months;
+
+    const atWar = diplomacy.wars.some(
+      (war) => war.attackerNationId === nation.id || war.defenderNationId === nation.id,
+    );
+    const warLogisticsMultiplier = atWar ? 1.5 : 1;
+
+    const upkeep = calculateMonthlyUpkeep(army.units, nation.id, world) * months * warLogisticsMultiplier;
 
     if (upkeep <= stockpile.gold) {
       stockpile.gold -= upkeep;
@@ -351,6 +359,7 @@ export function advanceWarSystem(
   currentMilitary: MilitaryState,
   currentRelations: NationRelations,
   spyNetwork: SpyNetwork,
+  currentStockpiles: NationStockpiles,
   currentMonth: number,
 ): WarUpdate {
   const events: GameEvent[] = [];
@@ -358,6 +367,7 @@ export function advanceWarSystem(
   let relations = currentRelations;
   let mapChanged = false;
   const nextWars: WarState[] = [];
+  const stockpiles = currentStockpiles;
 
   for (const war of diplomacy.wars) {
     const attacker = world.nationById.get(war.attackerNationId);
@@ -587,6 +597,7 @@ export function advanceWarSystem(
     mapChanged,
     military: nextMilitary,
     relations,
+    stockpiles,
   };
 }
 
@@ -706,7 +717,7 @@ export function getNationWarSummary(
     attackPower: Math.round(calculateArmyAttackPower(army) * army.morale),
     cityGarrisons: getCityGarrisonSummaries(world, army),
     defensePower: Math.round(calculateArmyDefensePower(army) * army.morale),
-    monthlyUpkeep: calculateMonthlyUpkeep(army.units),
+    monthlyUpkeep: calculateMonthlyUpkeep(army.units, army.nationId, world),
     recruitmentQueue: [...army.recruitmentQueue].sort((a, b) => a.completesAtMonth - b.completesAtMonth),
     totalSoldiers: totalUnits(army.units),
   };
@@ -771,7 +782,7 @@ function queueRecruitmentForPolicy(
 
   if (
     currentTotal + queuedTotal >= desiredTotal ||
-    stockpile.gold < Math.max(30, calculateMonthlyUpkeep(army.units) * 1.25)
+    stockpile.gold < Math.max(30, calculateMonthlyUpkeep(army.units, army.nationId, world) * 1.25)
   ) {
     return { army, stockpile };
   }
@@ -850,7 +861,7 @@ function disbandExcessMilitary(
 
   const currentTotal = totalUnits(army.units);
   const desiredTotal = calculateDesiredArmySize(world, army.nationId, policy);
-  const monthlyUpkeep = calculateMonthlyUpkeep(army.units);
+  const monthlyUpkeep = calculateMonthlyUpkeep(army.units, army.nationId, world);
   const queuedTotal = army.recruitmentQueue.reduce((sum, order) => sum + order.amount, 0);
   const overbuilt = currentTotal + queuedTotal > desiredTotal * 1.32;
   const expensiveArmy = monthlyUpkeep > 0 && stockpile.gold < monthlyUpkeep * 2.5;
@@ -1119,10 +1130,15 @@ function spendResources(
 function emptyResourceCosts() {
   return {
     coal: 0,
+    copper: 0,
     grain: 0,
+    gold: 0,
     iron: 0,
     oil: 0,
+    silver: 0,
     timber: 0,
+    water: 0,
+    steel: 0,
   } satisfies Record<Resource, number>;
 }
 
@@ -1225,7 +1241,7 @@ function createArmyGroupFromBestCity(
       distance: provinceDistance(world, city.provinceId, destinationProvinceId),
       garrison: army.cityGarrisons[city.id] ?? emptyUnits(),
     }))
-    .filter(({ city, garrison }) => totalUnits(garrison) > cityReserveTarget(city))
+    .filter(({ city, garrison }) => totalUnits(garrison) > 0)
     .sort((a, b) => {
       const scoreA = totalUnits(a.garrison) - a.distance * 18;
       const scoreB = totalUnits(b.garrison) - b.distance * 18;
@@ -1494,7 +1510,7 @@ function findProvincePath(
         continue;
       }
       const isDestination = neighborId === destinationProvinceId;
-      if (province.nationId !== nationId && !isDestination) {
+      if (province.nationId !== nationId && province.nationId !== undefined && !isDestination) {
         continue;
       }
 
@@ -1772,7 +1788,7 @@ function resolveBattle({
     attackerUnits.militia = Math.max(attackerUnits.militia, Math.round(targetProvince.tileCount * 0.6));
   }
 
-  const terrainBonus = provinceDefenseBonus(world, targetProvince.id);
+  const terrainBonus = provinceDefenseBonus(world, targetProvince.id) * 0.85;
   const cityBonus = world.cities.some((city) => city.provinceId === targetProvince.id) ? 1.2 : 1;
   const intelBonus = hasActiveIntelligence(spyNetwork, attackerNationId, defenderNationId, currentMonth)
     ? 1.08
@@ -1792,7 +1808,7 @@ function resolveBattle({
     terrainBonus *
     cityBonus *
     defenseRoll;
-  const attackerWon = attackerPower > defenderPower * 1.04;
+  const attackerWon = attackerPower > defenderPower * 0.5;
   const powerRatio = attackerWon
     ? defenderPower / Math.max(1, attackerPower)
     : attackerPower / Math.max(1, defenderPower);
@@ -1941,17 +1957,27 @@ function pickTargetProvince(world: World, attackerNationId: string, defenderNati
       .filter((province) => province.nationId === attackerNationId)
       .map((province) => province.id),
   );
-  const targets = world.provinces.filter((province) => {
-    if (province.nationId !== defenderNationId) {
-      return false;
-    }
-
+  const allDefenderProvinces = world.provinces.filter((province) => province.nationId === defenderNationId);
+  const targets = allDefenderProvinces.filter((province) => {
     return [...(adjacency.get(province.id) ?? [])].some((neighborId) => attackerProvinceIds.has(neighborId));
   });
 
-  return targets
-    .map((province) => ({ province, score: scoreTargetProvince(world, province) }))
-    .sort((a, b) => b.score - a.score || a.province.id.localeCompare(b.province.id))[0]?.province;
+  if (targets.length > 0) {
+    return targets
+      .map((province) => ({ province, score: scoreTargetProvince(world, province) }))
+      .sort((a, b) => b.score - a.score || a.province.id.localeCompare(b.province.id))[0]?.province;
+  }
+
+  const allAttackerProvinces = world.provinces.filter((province) => province.nationId === attackerNationId);
+  if (allAttackerProvinces.length === 0 || allDefenderProvinces.length === 0) {
+    return undefined;
+  }
+
+  const attackerProvince = allAttackerProvinces[0];
+  const target = allDefenderProvinces.sort((a, b) =>
+    provinceDistance(world, attackerProvince.id, a.id) - provinceDistance(world, attackerProvince.id, b.id)
+  )[0];
+  return target;
 }
 
 function scoreTargetProvince(world: World, province: Province) {
@@ -1996,7 +2022,7 @@ function countProvinceTerrain(world: World, provinceId: string) {
   }, {});
 }
 
-function buildProvinceAdjacency(world: World) {
+export function buildProvinceAdjacency(world: World) {
   const tileByCoord = new Map(world.tiles.map((tile) => [`${tile.x},${tile.y}`, tile]));
   const adjacency = new Map<string, Set<string>>();
 
@@ -2210,8 +2236,20 @@ function calculateUnitsDefensePower(units: ArmyUnits) {
   return unitTypes.reduce((sum, type) => sum + units[type] * unitStats[type].defense, 0);
 }
 
-function calculateMonthlyUpkeep(units: ArmyUnits) {
-  return unitTypes.reduce((sum, type) => sum + units[type] * unitStats[type].upkeepGold, 0);
+function calculateMonthlyUpkeep(units: ArmyUnits, nationId: string, world: World): number {
+  const totalUnits = unitTypes.reduce((sum, type) => sum + units[type], 0);
+  if (totalUnits === 0) return 0;
+
+  const provinceIds = world.provinces.filter(p => p.nationId === nationId).map(p => p.id);
+  const totalPopulation = provinceIds.reduce((sum, pid) => {
+    const province = world.provinceById.get(pid);
+    return sum + (province ? province.population : 0);
+  }, 0);
+
+  const baseUpkeep = unitTypes.reduce((sum, type) => sum + units[type] * unitStats[type].upkeepGold, 0);
+  const densityMultiplier = Math.min(2, Math.max(0.5, totalPopulation / Math.max(1, provinceIds.length * 50)));
+
+  return Math.round(baseUpkeep * densityMultiplier);
 }
 
 function totalUnits(units: ArmyUnits) {
@@ -2432,4 +2470,86 @@ function nationName(world: World, nationId: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function handleDeserters(
+  world: World,
+  military: MilitaryState,
+  currentMonth: number,
+): { military: MilitaryState; events: GameEvent[] } {
+  const events: GameEvent[] = [];
+  const nextMilitary = cloneMilitary(military);
+
+  for (const nation of world.nations) {
+    const army = nextMilitary[nation.id];
+    if (!army) continue;
+
+    const cities = world.cities.filter((c) => c.nationId === nation.id);
+    const validCityIds = new Set(cities.map((c) => c.id));
+
+    for (const group of army.armyGroups) {
+      if (!validCityIds.has(group.originCityId ?? "")) {
+        const deserters = group.units;
+        const totalDeserters = totalUnits(deserters);
+        if (totalDeserters > 0) {
+          events.push(buildWarEvent({
+            currentMonth,
+            description: `${nationName(world, nation.id)} army group in ${world.provinceById.get(group.locationProvinceId)?.name ?? group.locationProvinceId} had deserters (${totalDeserters} soldiers) due to no valid home city.`,
+            id: `event-desertion-${nation.id}-${group.id}-${currentMonth}`,
+            kind: "desertion",
+            nationIds: [nation.id],
+            title: "Desertion",
+          }));
+          group.units = emptyUnits();
+        }
+      }
+    }
+  }
+
+  return { military: nextMilitary, events };
+}
+
+function enforceProvinceMilitaryLimits(
+  military: MilitaryState,
+  world: World,
+  eraStates: Record<string, string>,
+): MilitaryState {
+  const nextMilitary = cloneMilitary(military);
+
+  for (const nation of world.nations) {
+    const army = nextMilitary[nation.id];
+    if (!army) continue;
+
+    const era = eraStates[nation.id] ?? "stone";
+    const provinceLimits = new Map<string, number>();
+
+    for (const province of world.provinces) {
+      if (province.nationId !== nation.id) continue;
+      const limit = calculateProvinceMilitaryLimit(province.id, world, era);
+      provinceLimits.set(province.id, limit.maxArmySize);
+    }
+
+    for (const group of army.armyGroups) {
+      const maxSize = provinceLimits.get(group.locationProvinceId) ?? 0;
+      if (maxSize > 0 && totalUnits(group.units) > maxSize) {
+        const excess = totalUnits(group.units) - maxSize;
+        group.units = takeUnits(group.units, totalUnits(group.units) - excess);
+      }
+    }
+
+    const cityGarrisons = army.cityGarrisons;
+    for (const [cityId, garrison] of Object.entries(cityGarrisons)) {
+      const city = world.cityById.get(cityId);
+      if (!city) continue;
+      const province = world.provinceById.get(city.provinceId);
+      if (!province) continue;
+      const maxSize = calculateProvinceMilitaryLimit(province.id, world, era).maxArmySize;
+      const totalGarrison = totalUnits(garrison);
+      if (totalGarrison > maxSize) {
+        cityGarrisons[cityId] = takeUnits(garrison, totalGarrison - maxSize);
+      }
+    }
+  }
+
+  return nextMilitary;
 }

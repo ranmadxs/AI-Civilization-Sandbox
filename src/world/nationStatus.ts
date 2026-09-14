@@ -10,7 +10,8 @@ import type { World } from "./types";
 export function isNationDefeated(world: World, nationId: string) {
   const cities = world.cities.filter((city) => city.nationId === nationId);
   const population = cities.reduce((sum, city) => sum + city.population, 0);
-  return cities.length === 0 && population <= 0;
+  const provinces = world.provinces.filter((p) => p.nationId === nationId);
+  return provinces.length === 0 || (cities.length === 0 && population <= 0);
 }
 
 /** 判断国家是否仍可参与经济、政策、外交、间谍和军事行动。 */
