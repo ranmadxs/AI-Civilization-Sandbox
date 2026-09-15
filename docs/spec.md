@@ -1,8 +1,8 @@
 # AI Civilization Sandbox — Especificación del Repositorio
 
-**Versión del documento:** 1.0  
-**Última actualización:** 2026-09-11  
-**Versión del juego:** V0.2.0  
+ **Versión del documento:** 1.0  
+**Última actualización:** 2026-09-13  
+**Versión del juego:** V1.0.0  
 **Licencia:** GPL-2.0-only
 
 ---

@@ -27,7 +27,14 @@ export type GameEventKind =
   | "intelligence_acquired"
   | "relations_improved"
   | "relations_damaged"
-  | "relations_sowed_discord";
+  | "relations_sowed_discord"
+  | "peaceful_expand"
+  | "hunger"
+  | "market"
+  | "construction"
+  | "desertion"
+  | "currency"
+  | "era";
 
 export type GameEvent = {
   id: string;

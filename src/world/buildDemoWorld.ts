@@ -2,8 +2,8 @@ import type { City, MapEdge, Nation, Province, Resource, Terrain, Tile, World } 
 import { resourceTypes } from "./economy";
 import { cityNames, governmentForms, nationNameBases, provinceNames } from "./nameCatalog";
 
-const width = 96;
-const height = 64;
+const width = 192;
+const height = 128;
 const defaultSeed = "observer-world-001";
 const defaultNationCount = 6;
 const targetProvinceCount = 118;
@@ -95,8 +95,49 @@ function buildTiles(seedHash: number): Tile[] {
     }
   }
 
+  generateRivers(tiles, seedHash);
   return tiles;
 }
+function generateRivers(tiles: Tile[], seedHash: number) {
+  const tileMap = new Map<string, Tile>();
+  for (const t of tiles) tileMap.set(`${t.x},${t.y}`, t);
+  const numSources = Math.min(Math.floor(width * height * 0.002), 50);
+  const rng = mulberry32(seedHash + 9999);
+  const usedRiverTiles = new Set<string>();
+  for (let s = 0; s < numSources; s += 1) {
+    const sx = Math.floor(rng() * width);
+    const sy = Math.floor(rng() * height);
+    const startTile = tileMap.get(`${sx},${sy}`);
+    if (!startTile || startTile.terrain === "ocean" || startTile.elevation < 0.5) continue;
+    let cx = sx, cy = sy;
+    const maxSteps = 80;
+    for (let step = 0; step < maxSteps; step += 1) {
+      const key = `${cx},${cy}`;
+      if (usedRiverTiles.has(key)) break;
+      const tile = tileMap.get(key);
+      if (!tile) break;
+      if (tile.terrain === "ocean") break;
+      usedRiverTiles.add(key);
+      tile.river = true;
+      let lowestX = cx, lowestY = cy, lowestElev = tile.elevation;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+        const neighbor = tileMap.get(`${nx},${ny}`);
+        if (!neighbor || neighbor.terrain === "ocean") continue;
+        if (neighbor.elevation < lowestElev) {
+          lowestElev = neighbor.elevation;
+          lowestX = nx;
+          lowestY = ny;
+        }
+      }
+      if (lowestX === cx && lowestY === cy) break;
+      cx = lowestX;
+      cy = lowestY;
+    }
+  }
+}
+
 
 function chooseProvinceSeeds(tiles: Tile[], rng: () => number): ProvinceSeed[] {
   const landTiles = tiles.filter((tile) => isLand(tile));
@@ -728,11 +769,13 @@ function sampleClimate(x: number, y: number, seedHash: number) {
   const ny = y / (height - 1);
   const dx = Math.abs(nx - 0.5) * 2;
   const dy = Math.abs(ny - 0.5) * 2;
-  const continentalShelf = 1 - (dx ** 2.5 * 0.56 + dy ** 2.2 * 0.5);
+   const continentalShelf = 1 - (dx ** 2.5 * 0.56 + dy ** 2.2 * 0.5);
   const broadLand = fbm(x * 0.018, y * 0.018, seedHash, 4);
   const detail = fbm(x * 0.075 + 90, y * 0.075 - 30, seedHash + 37, 4);
   const ridge = Math.abs(fbm(x * 0.05 - 10, y * 0.05 + 70, seedHash + 91, 3) - 0.5) * 2;
-  const elevation = clamp01(continentalShelf * 0.57 + broadLand * 0.58 + detail * 0.18 + ridge * 0.15 - 0.2);
+  const plateau = fbm(x * 0.008 + 500, y * 0.008 + 500, seedHash + 7777, 3) * 0.3;
+  const landFactor = 0.5 + continentalShelf * 0.5;
+  const elevation = clamp01(continentalShelf * 0.7 + broadLand * 0.3 * landFactor + detail * 0.15 * landFactor + ridge * 0.1 + plateau * 0.25 - 0.2);
   const latitude = Math.abs(ny - 0.5) * 2;
   const temperature = clamp01(1 - latitude * 0.82 - elevation * 0.22 + fbm(x * 0.04, y * 0.04, seedHash + 500, 3) * 0.18);
   const oceanBonus = elevation < 0.46 ? 0.18 : 0;
@@ -742,10 +785,13 @@ function sampleClimate(x: number, y: number, seedHash: number) {
       oceanBonus,
   );
 
-  return { elevation, temperature, moisture };
+  return { elevation, temperature, moisture, continentalShelf };
 }
 
 function terrainFromSample(sample: ReturnType<typeof sampleClimate>): Terrain {
+   if (sample.continentalShelf < 0.3) {
+    return "ocean";
+  }
   if (sample.elevation < 0.39) {
     return "ocean";
   }

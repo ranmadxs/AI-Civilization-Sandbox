@@ -38,6 +38,7 @@ const terrainColors = {
   hill: 0x9a8d65,
   mountain: 0x7d7f85,
   desert: 0xc9b06b,
+  lake: 0x2e7d9e,
 };
 
 const resourceColors = {
@@ -46,6 +47,11 @@ const resourceColors = {
   iron: 0xc6cad1,
   coal: 0x33363d,
   oil: 0x18191d,
+  water: 0x3aa0e0,
+  gold: 0xffd700,
+  silver: 0xc0c0c0,
+  copper: 0xb87333,
+  steel: 0x808080,
 };
 
 export function WorldMap({
@@ -60,16 +66,53 @@ export function WorldMap({
   language,
 }: WorldMapProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
+  const viewportRef = useRef<Container | null>(null);
   const armyGraphicsRef = useRef<Graphics | null>(null);
   const armyLabelsRef = useRef<Container | null>(null);
   const armyPathsRef = useRef<Graphics | null>(null);
   const selectedLayerRef = useRef<Graphics | null>(null);
+  const neonTravelLightRef = useRef<Graphics | null>(null);
   const tileByCoord = useMemo(
     () => new Map(world.tiles.map((tile) => [`${tile.x},${tile.y}`, tile])),
     [world],
   );
   const [zoom, setZoom] = useState(1);
   const [resourceTooltip, setResourceTooltip] = useState<ResourceTooltip | undefined>();
+
+  const zoomIn = () => {
+    const app = appRef.current;
+    const viewport = viewportRef.current;
+    if (!app || !viewport) return;
+    const centerX = app.renderer.width / 2;
+    const centerY = app.renderer.height / 2;
+    const beforeZoom = viewport.toLocal({ x: centerX, y: centerY });
+    const nextScale = clamp(viewport.scale.x * 1.2, MIN_SCALE, MAX_SCALE);
+    viewport.scale.set(nextScale);
+    setZoom(nextScale);
+    const afterZoom = viewport.toGlobal(beforeZoom);
+    viewport.position.set(
+      viewport.x + centerX - afterZoom.x,
+      viewport.y + centerY - afterZoom.y,
+    );
+  };
+
+  const zoomOut = () => {
+    const app = appRef.current;
+    const viewport = viewportRef.current;
+    if (!app || !viewport) return;
+    const centerX = app.renderer.width / 2;
+    const centerY = app.renderer.height / 2;
+    const beforeZoom = viewport.toLocal({ x: centerX, y: centerY });
+    const nextScale = clamp(viewport.scale.x / 1.2, MIN_SCALE, MAX_SCALE);
+    viewport.scale.set(nextScale);
+    setZoom(nextScale);
+    const afterZoom = viewport.toGlobal(beforeZoom);
+    viewport.position.set(
+      viewport.x + centerX - afterZoom.x,
+      viewport.y + centerY - afterZoom.y,
+    );
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -88,7 +131,6 @@ export function WorldMap({
         antialias: true,
         autoDensity: true,
         background: "#132028",
-        resizeTo: host,
         resolution: window.devicePixelRatio || 1,
       });
 
@@ -97,14 +139,27 @@ export function WorldMap({
         return;
       }
 
-      app = pixiApp;
-      host.appendChild(pixiApp.canvas);
-      syncRendererSize(pixiApp, host);
+      const mapPixelW = world.width * TILE_SIZE;
+      const mapPixelH = world.height * TILE_SIZE;
+      const canvasW = Math.ceil(mapPixelW * MIN_SCALE);
+      const canvasH = Math.ceil(mapPixelH * MIN_SCALE);
+      pixiApp.renderer.resize(canvasW, canvasH);
+      pixiApp.canvas.style.width = canvasW + "px";
+      pixiApp.canvas.style.height = canvasH + "px";
+      pixiApp.canvas.style.position = "";
+      pixiApp.canvas.style.top = "";
+      pixiApp.canvas.style.left = "";
 
+      app = pixiApp;
+      appRef.current = pixiApp;
       const viewport = new Container();
+      viewportRef.current = viewport;
       pixiApp.stage.addChild(viewport);
 
       drawWorld(viewport, world, mapMode, tileByCoord, language);
+      const neonTravelLight = new Graphics();
+      neonTravelLightRef.current = neonTravelLight;
+      viewport.addChild(neonTravelLight);
       const armyPaths = new Graphics();
       const armies = new Graphics();
       const armyLabels = new Container();
@@ -173,14 +228,22 @@ export function WorldMap({
 
       const handleWheel = (event: WheelEvent) => {
         event.preventDefault();
-        const bounds = pixiApp.canvas.getBoundingClientRect();
+        const bounds = host.getBoundingClientRect();
+        const scaleX = app!.renderer.width / Math.max(1, bounds.width);
+        const scaleY = app!.renderer.height / Math.max(1, bounds.height);
         const pointer = {
-          x: event.clientX - bounds.left,
-          y: event.clientY - bounds.top,
+          x: (event.clientX - bounds.left) * scaleX,
+          y: (event.clientY - bounds.top) * scaleY,
         };
         const beforeZoom = viewport.toLocal(pointer);
+        
+        let delta = event.deltaY;
+        if (event.deltaMode === 1) delta *= 40;
+        else if (event.deltaMode === 2) delta *= 800;
+
+        const factor = Math.abs(delta) > 30 ? (delta > 0 ? 0.9 : 1.1) : (delta > 0 ? 0.97 : 1.03);
         const nextScale = clamp(
-          viewport.scale.x * (event.deltaY > 0 ? 0.9 : 1.1),
+          viewport.scale.x * factor,
           MIN_SCALE,
           MAX_SCALE,
         );
@@ -196,23 +259,93 @@ export function WorldMap({
 
       const handleMouseLeave = () => setResourceTooltip(undefined);
 
-      pixiApp.canvas.addEventListener("wheel", handleWheel, { passive: false });
-      pixiApp.canvas.addEventListener("mouseleave", handleMouseLeave);
+      host.addEventListener("wheel", handleWheel, { passive: false });
+      host.addEventListener("mouseleave", handleMouseLeave);
 
       resizeObserver = new ResizeObserver(() => {
         window.cancelAnimationFrame(resizeFrame);
         resizeFrame = window.requestAnimationFrame(() => {
-          syncRendererSize(pixiApp, host);
-          pixiApp.stage.hitArea = pixiApp.screen;
+          syncRendererSize(pixiApp, host, world);
+          pixiApp.stage.hitArea = pixiApp.renderer.screen;
         });
       });
       resizeObserver.observe(host);
 
       return () => {
-        pixiApp.canvas.removeEventListener("wheel", handleWheel);
-        pixiApp.canvas.removeEventListener("mouseleave", handleMouseLeave);
+        host.removeEventListener("wheel", handleWheel);
+        host.removeEventListener("mouseleave", handleMouseLeave);
       };
     };
+
+    let animFrameId = 0;
+    let animFrame = 0;
+    let lastTime = performance.now();
+    const animate = () => {
+      const now = performance.now();
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      animFrame += dt;
+
+      const neonLight = neonTravelLightRef.current;
+      if (neonLight && mapMode === "political") {
+        neonLight.clear();
+        for (const nation of world.nations) {
+          const nationEdges = world.nationEdges.filter((e) => e.nationId === nation.id);
+          if (nationEdges.length === 0) continue;
+
+          const edgeLengths = nationEdges.map((e) =>
+            Math.hypot(e.x2 - e.x1, e.y2 - e.y1),
+          );
+          const totalLength = edgeLengths.reduce((s, l) => s + l, 0);
+          if (totalLength <= 0) continue;
+
+          const speed = 30;
+          const pos = (animFrame * speed) % totalLength;
+          let accumulated = 0;
+          let onEdge = nationEdges[0];
+          let edgeStart = 0;
+          let t = 0;
+
+          for (let i = 0; i < nationEdges.length; i++) {
+            const len = edgeLengths[i];
+            if (accumulated + len >= pos) {
+              onEdge = nationEdges[i];
+              edgeStart = accumulated;
+              t = (pos - edgeStart) / Math.max(1, len);
+              break;
+            }
+            accumulated += len;
+          }
+
+          const x1 = onEdge.x1 * TILE_SIZE;
+          const y1 = onEdge.y1 * TILE_SIZE;
+          const x2 = onEdge.x2 * TILE_SIZE;
+          const y2 = onEdge.y2 * TILE_SIZE;
+          const lightX = x1 + (x2 - x1) * t;
+          const lightY = y1 + (y2 - y1) * t;
+
+          const segLen = 10;
+          const halfSeg = segLen / 2;
+          const angle = Math.atan2(y2 - y1, x2 - x1);
+          const sx = lightX - Math.cos(angle) * halfSeg;
+          const sy = lightY - Math.sin(angle) * halfSeg;
+          const ex = lightX + Math.cos(angle) * halfSeg;
+          const ey = lightY + Math.sin(angle) * halfSeg;
+
+          neonLight
+            .moveTo(sx, sy)
+            .lineTo(ex, ey)
+            .stroke({ color: nation.numericColor, width: 5, alpha: 0.95 });
+          neonLight
+            .moveTo(sx, sy)
+            .lineTo(ex, ey)
+            .stroke({ color: nation.numericColor, width: 2, alpha: 0.5 });
+        }
+      }
+
+      animFrameId = requestAnimationFrame(animate);
+    };
+    animFrameId = requestAnimationFrame(animate);
 
     let cleanupWheel: (() => void) | undefined;
     setup().then((cleanup) => {
@@ -222,12 +355,15 @@ export function WorldMap({
     return () => {
       disposed = true;
       window.cancelAnimationFrame(resizeFrame);
+      window.cancelAnimationFrame(animFrameId);
       cleanupWheel?.();
       resizeObserver?.disconnect();
       armyGraphicsRef.current = null;
       armyLabelsRef.current = null;
       armyPathsRef.current = null;
       selectedLayerRef.current = null;
+      appRef.current = null;
+      viewportRef.current = null;
       if (app?.canvas.parentElement === host) {
         host.removeChild(app.canvas);
       }
@@ -264,7 +400,14 @@ export function WorldMap({
 
   return (
     <div className="worldMap" ref={hostRef}>
-      <div className="mapHint">{language === "zh" ? "拖动平移 / 滚轮缩放" : "Drag to pan / Wheel to zoom"} / {Math.round(zoom * 100)}%</div>
+      <div className="mapZoomControls">
+        <button type="button" onClick={zoomIn} title="Zoom In">+</button>
+        <button type="button" onClick={zoomOut} title="Zoom Out">-</button>
+        <span className="zoomPercentage">{Math.round(zoom * 100)}%</span>
+      </div>
+      <div className="mapHint">
+        {language === "zh" ? "拖动平移 / 滚轮缩放" : "Drag to pan / Wheel to zoom"} / {Math.round(zoom * 100)}% / Tiles: {world.tiles.length.toLocaleString()}
+      </div>
       {resourceTooltip && (
         <div className="resourceTooltip" style={{ left: resourceTooltip.x, top: resourceTooltip.y }}>
           {resourceTooltip.label}
@@ -384,15 +527,20 @@ function drawWorld(
   );
 }
 
-function syncRendererSize(app: Application, host: HTMLElement) {
-  const width = Math.max(1, Math.floor(host.clientWidth));
-  const height = Math.max(1, Math.floor(host.clientHeight));
+function syncRendererSize(app: Application, host: HTMLElement, world: World) {
+  const mapPixelW = world.width * TILE_SIZE;
+  const mapPixelH = world.height * TILE_SIZE;
+  const canvasW = Math.ceil(mapPixelW * MIN_SCALE);
+  const canvasH = Math.ceil(mapPixelH * MIN_SCALE);
 
-  if (app.screen.width !== width || app.screen.height !== height) {
-    app.renderer.resize(width, height);
+  if (app.renderer.width !== canvasW || app.renderer.height !== canvasH) {
+    app.renderer.resize(canvasW, canvasH);
   }
 
-  app.stage.hitArea = app.screen;
+  app.canvas.style.width = canvasW + "px";
+  app.canvas.style.height = canvasH + "px";
+
+  app.stage.hitArea = app.renderer.screen;
 }
 
 function cityAtPoint(x: number, y: number, world: World) {
@@ -646,15 +794,48 @@ function drawSelectedProvince(
 
 function drawNationLabels(container: Container, world: World, language: Language) {
   for (const nation of world.nations) {
-    if (isNationDefeated(world, nation.id)) {
-      continue;
-    }
+    const isDefeated = isNationDefeated(world, nation.id);
+    const hasNoTiles = world.provinces.filter((p) => p.nationId === nation.id).length === 0;
+    const isDead = isDefeated || hasNoTiles;
 
     const capitalCity = nation.capitalCityId ? world.cityById.get(nation.capitalCityId) : undefined;
     const capitalProvince = world.provinceById.get(nation.capitalProvinceId);
     const x = capitalCity?.x ?? capitalProvince?.centerX;
     const y = capitalCity?.y ?? capitalProvince?.centerY;
     if (x === undefined || y === undefined) {
+      if (isDead) {
+        const label = new Text({
+          text: "💀",
+          style: {
+            fill: 0x6b7b72,
+            fontFamily: "Arial",
+            fontSize: 14,
+            fontWeight: "700",
+            stroke: { color: 0x10161b, width: 3 },
+          },
+        });
+        const fallbackProvince = world.provinces.find((p) => p.nationId === nation.id);
+        if (fallbackProvince) {
+          label.position.set(fallbackProvince.centerX * TILE_SIZE + TILE_SIZE * 0.7, fallbackProvince.centerY * TILE_SIZE - TILE_SIZE * 0.9);
+          container.addChild(label);
+        }
+      }
+      continue;
+    }
+
+    if (isDead) {
+      const label = new Text({
+        text: "💀",
+        style: {
+          fill: 0x6b7b72,
+          fontFamily: "Arial",
+          fontSize: 14,
+          fontWeight: "700",
+          stroke: { color: 0x10161b, width: 3 },
+        },
+      });
+      label.position.set(x * TILE_SIZE + TILE_SIZE * 0.7, y * TILE_SIZE - TILE_SIZE * 0.9);
+      container.addChild(label);
       continue;
     }
 

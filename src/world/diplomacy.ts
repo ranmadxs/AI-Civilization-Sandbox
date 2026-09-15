@@ -1,7 +1,10 @@
 import { calculateNationCityEconomy } from "./cityEconomy";
 import type { GameEvent } from "./events";
+import type { Tile } from "./types";
 import { isNationActive } from "./nationStatus";
 import type { NationPolicies } from "./policyAI";
+import { getAdjacentTiles, calculatePeacefulExpandCost } from "./policyAI";
+import { buildProvinceAdjacency } from "./war";
 import { getNationRelation, relationKey, type NationRelations } from "./relationships";
 import type { Resource, World } from "./types";
 
@@ -16,7 +19,7 @@ export type WarState = {
   defenderScore?: number;
   relationPenaltyAppliedMonth?: number;
   targetProvinceId?: string;
-  expansionPolicy?: "control_city" | "decisive_battle" | "control_resource" | "none";
+  expansionPolicy?: "control_city" | "decisive_battle" | "control_resource" | "peaceful_expand" | "none";
   targetNationIdForCapture?: string;
 };
 
@@ -607,9 +610,112 @@ function canDeclareWar(
     !areNationsAtWar(diplomacy, nationAId, nationBId) &&
     !areNationsAllied(diplomacy, nationAId, nationBId) &&
     !hasVassalTie(diplomacy, nationAId, nationBId) &&
-    !hasActiveTruce(diplomacy, nationAId, nationBId, currentMonth) &&
-    (!world || areAdjacentNations(world, nationAId, nationBId))
+    !hasActiveTruce(diplomacy, nationAId, nationBId, currentMonth)
   );
+}
+
+export function executePeacefulExpansion(
+  world: World,
+  policies: NationPolicies,
+  stockpiles: Record<string, {gold: number; water: number; resources: Record<string, number>}>,
+  currentMonth: number,
+): GameEvent[] {
+  const events: GameEvent[] = [];
+  for (const [nationId, policyState] of Object.entries(policies)) {
+    if (policyState.expansion.policy !== "peaceful_expand") {
+      continue;
+    }
+    if (policyState.decidedAtMonth > currentMonth) continue;
+    const nationStockpile = stockpiles[nationId] ?? {gold: 0, water: 0, resources: {}};
+    if (nationStockpile.gold < 1) continue;
+
+    const adjacentTiles = getAdjacentTiles(world, nationId);
+    let expandableTiles = adjacentTiles.filter((tile) => {
+      const province = tile.provinceId ? world.provinceById.get(tile.provinceId) : undefined;
+      if (!province) return false;
+      return province.nationId === undefined || province.nationId !== nationId;
+    });
+
+    if (expandableTiles.length === 0) {
+      expandableTiles = findNearestFreeTile(world, nationId);
+    }
+    if (expandableTiles.length === 0) {
+      continue;
+    }
+
+    expandableTiles.sort((a, b) => {
+      const aProvince = a.provinceId ? world.provinceById.get(a.provinceId) : undefined;
+      const bProvince = b.provinceId ? world.provinceById.get(b.provinceId) : undefined;
+      const aIsEnemy = aProvince?.nationId !== undefined && aProvince?.nationId !== nationId;
+      const bIsEnemy = bProvince?.nationId !== undefined && bProvince?.nationId !== nationId;
+      if (aIsEnemy && !bIsEnemy) return -1;
+      if (!aIsEnemy && bIsEnemy) return 1;
+      return 0;
+    });
+
+    const tile = expandableTiles[0];
+    const province = tile.provinceId ? world.provinceById.get(tile.provinceId) : undefined;
+    if (!province) continue;
+    const cost = calculatePeacefulExpandCost(tile, world);
+    if (nationStockpile.gold < cost.gold) continue;
+
+    const targetNationId = province.nationId;
+    province.nationId = nationId;
+    nationStockpile.gold -= cost.gold;
+    world.mapRevision = (world.mapRevision || 0) + 1;
+
+    if (cost.type === "province" && province.nationId === nationId) {
+      const populationGold = Math.round((province.population * 0.05) * 100) / 100;
+      const cityCount = world.cities.filter(c => c.provinceId === province.id).length;
+      const cityTribute = cityCount * 30;
+      nationStockpile.gold += populationGold + cityTribute;
+    }
+
+    events.push({
+      month: currentMonth,
+      nationIds: targetNationId ? [nationId, targetNationId] : [nationId],
+      kind: "peaceful_expand",
+      title: "Peaceful Expansion",
+      description: targetNationId
+        ? `${nationId} peacefully expanded toward ${targetNationId}, taking ${province.name}. Tribute collected: ${cost.tribute} gold.`
+        : `${nationId} peacefully colonized ${province.name} (neutral territory) for 1 gold.`,
+      id: `peaceful-expand-${nationId}-${province.id}-${currentMonth}`,
+    } as any);
+  }
+  return events;
+}
+
+function findNearestFreeTile(world: World, nationId: string): Tile[] {
+  const nationProvinceIds = new Set(world.provinces.filter(p => p.nationId === nationId).map(p => p.id));
+  const adjacency = buildProvinceAdjacency(world);
+  const visited = new Set<string>();
+  const queue: string[] = [];
+  const result: Tile[] = [];
+
+  for (const provinceId of nationProvinceIds) {
+    queue.push(provinceId);
+    visited.add(provinceId);
+  }
+
+  while (queue.length > 0 && result.length < 5) {
+    const provinceId = queue.shift()!;
+    const province = world.provinceById.get(provinceId);
+    if (!province) continue;
+
+    const tile = world.tiles.find(t => t.provinceId === provinceId);
+    if (tile && province.nationId === undefined) {
+      result.push(tile);
+    }
+
+    for (const neighborId of adjacency.get(provinceId) ?? []) {
+      if (!visited.has(neighborId)) {
+        visited.add(neighborId);
+        queue.push(neighborId);
+      }
+    }
+  }
+
+  return result;
 }
 
 function areAdjacentNations(world: World, nationAId: string, nationBId: string) {

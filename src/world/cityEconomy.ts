@@ -1,4 +1,5 @@
-import { getTileMonthlyYield } from "./economy";
+import { MAX_DENSITY_PER_TILE } from "./economy";
+import { CONSUMPTION_PER_PERSON } from "./hunger";
 import type { City, Terrain, World } from "./types";
 
 export type CityEconomy = {
@@ -6,6 +7,8 @@ export type CityEconomy = {
   monthlyGold: number;
   army: number;
   defense: number;
+  overpopulationRatio: number;
+  monthlyConsumption: { grain: number; water: number };
 };
 
 export type NationCityEconomy = {
@@ -13,60 +16,60 @@ export type NationCityEconomy = {
   monthlyGold: number;
   army: number;
   maxDefense: number;
+  monthlyConsumption: { grain: number; water: number };
 };
 
-const FOOD_PER_GRAIN_TILE = 3000;
-const POP_PER_FOOD = 1000;
-const HOUSING_CAP_PER_LEVEL = 20000;
-const MAX_DENSITY_PER_TILE = 20000;
+/** Impuesto base del sistema por habitante: 0.0000083 * 0.2. */
+const SYSTEM_TAX_RATE = 0.0000083 * 0.2;
+const BASE_GOLD_PER_LEVEL = 90;
+const CAPITAL_GOLD_BONUS = 150;
+const POPULATION_GOLD_FACTOR = 0.5;
 
 export function calculateCityEconomy(city: City, world: World): CityEconomy {
   const tile = world.tiles.find((worldTile) => worldTile.x === city.x && worldTile.y === city.y);
   const provinceTiles = world.tiles.filter((worldTile) => worldTile.provinceId === city.provinceId);
-  const resourceOutput = provinceTiles.reduce((sum, provinceTile) => {
-    const yieldValue = getTileMonthlyYield(provinceTile);
-    return sum + (yieldValue?.amount ?? 0);
-  }, 0);
   const terrain = tile?.terrain ?? "plain";
-  const terrainGold = terrainGoldBonus(terrain);
   const terrainDefense = terrainDefenseBonus(terrain);
-  const capitalGold = city.isCapital ? 18 : 0;
   const capitalArmy = city.isCapital ? 220 : 0;
   const capitalDefense = city.isCapital ? 2 : 0;
-  const grainTiles = provinceTiles.filter((t) => t.resource === "grain");
-  const provinceCities = world.cities.filter((c) => c.provinceId === city.provinceId);
-  const provincePopulation = provinceCities.reduce((sum, c) => sum + c.population, 0);
-  const maxProvincePopulation = provinceTiles.length * MAX_DENSITY_PER_TILE;
-  const densityRatio = Math.min(provincePopulation / Math.max(maxProvincePopulation, 1), 1);
-  const effectiveFood = grainTiles.length * FOOD_PER_GRAIN_TILE * Math.max(0, 1 - densityRatio);
-  const foodCapacity = effectiveFood * POP_PER_FOOD;
-  const housingCapacity = city.level * HOUSING_CAP_PER_LEVEL;
-  const tileCapacity = grainTiles.length > 0 ? Math.min(foodCapacity, housingCapacity) : provinceTiles.length * MAX_DENSITY_PER_TILE;
-  const cappedPopulation = Math.min(city.population, tileCapacity);
+  const maxPopulation = provinceTiles.length * MAX_DENSITY_PER_TILE;
+  const overpopulationRatio = maxPopulation > 0
+    ? Math.max(0, city.population - maxPopulation) / maxPopulation
+    : 0;
+  const productionMultiplier = 1 - overpopulationRatio;
+
   const monthlyGold = Math.round(
-    cappedPopulation / 950 +
-      city.level * 9 +
-      resourceOutput * 0.72 +
-      terrainGold +
-      capitalGold,
+    city.population * POPULATION_GOLD_FACTOR
+    + city.level * BASE_GOLD_PER_LEVEL
+    + (city.isCapital ? CAPITAL_GOLD_BONUS : 0)
+    + (city.level * city.population * SYSTEM_TAX_RATE * 1000000 * productionMultiplier)
   );
   const army = Math.round(
-    cappedPopulation * (city.isCapital ? 0.026 : 0.017) +
+    (city.population * (city.isCapital ? 0.026 : 0.017) +
       city.level * 135 +
-      resourceOutput * 7 +
-      capitalArmy,
+      capitalArmy) * productionMultiplier,
   );
   const defense = clampInt(
-    Math.round(city.level + terrainDefense + capitalDefense + resourceOutput / 24),
+    Math.round(
+      (city.level + terrainDefense + capitalDefense) *
+        productionMultiplier,
+    ),
     1,
     12,
   );
+
+  const monthlyConsumption = {
+    grain: Math.round(city.population * CONSUMPTION_PER_PERSON.grain * 1000) / 1000,
+    water: Math.round(city.population * CONSUMPTION_PER_PERSON.water * 1000) / 1000,
+  };
 
   return {
     army,
     defense,
     monthlyGold,
-    population: cappedPopulation,
+    overpopulationRatio,
+    population: city.population,
+    monthlyConsumption,
   };
 }
 
@@ -81,8 +84,12 @@ export function calculateNationCityEconomy(nationId: string, world: World): Nati
       maxDefense: Math.max(total.maxDefense, economy.defense),
       monthlyGold: total.monthlyGold + economy.monthlyGold,
       population: total.population + economy.population,
+      monthlyConsumption: {
+        grain: total.monthlyConsumption.grain + economy.monthlyConsumption.grain,
+        water: total.monthlyConsumption.water + economy.monthlyConsumption.water,
+      },
     }),
-    { army: 0, maxDefense: 0, monthlyGold: 0, population: 0 },
+    { army: 0, maxDefense: 0, monthlyGold: 0, population: 0, monthlyConsumption: { grain: 0, water: 0 } },
   );
 }
 

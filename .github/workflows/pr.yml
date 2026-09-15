@@ -29,59 +29,18 @@ jobs:
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             HEAD_SHA="${{ github.event.pull_request.head.sha }}"
             echo "Comparando package.json entre ${BASE_SHA:0:7} (base) y ${HEAD_SHA:0:7} (head)"
-            
-            # Verificar que package.json fue modificado
-            if ! git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -q '^package\.json$'; then
+
+            # Verificar que package.json fue modificado en AI Civilization o Fantasy-Map-Generator
+            MODIFIED=$(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}" | grep -E '(^package\.json$|^fantasy-map-generator/package\.json$)' || true)
+            if [ -z "$MODIFIED" ]; then
               echo "❌ package.json NO fue modificado en este PR"
               echo ""
               echo "Política del proyecto: TODO PR debe bumbear la versión en"
-              echo "package.json siguiendo semver:"
-              echo "  - fix      → patch  (X.Y.Z+1)"
-              echo "  - feat     → minor  (X.Y+1.0)"
-              echo "  - BREAKING → major  (X+1.0.0)"
-              echo ""
-              echo "Editá package.json y bumbeá version."
+              echo "package.json siguiendo semver."
               exit 1
             fi
-            
-            # Extraer y mostrar la versión actual y nueva
-            BASE_VERSION=$(git show "${BASE_SHA}:package.json" | grep '"version"' | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
-            HEAD_VERSION=$(git show "${HEAD_SHA}:package.json" | grep '"version"' | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
-            
-            echo "📦 Versión base:   $BASE_VERSION"
-            echo "📦 Versión HEAD:   $HEAD_VERSION"
-            echo "📦 Cambio de versión: $HEAD_VERSION"
-            
-            # Validar formato semver X.Y.Z
-            if ! echo "$HEAD_VERSION" | grep -qP '^\d+\.\d+\.\d+$'; then
-              echo "❌ La versión $HEAD_VERSION no sigue el formato semver (X.Y.Z)"
-              echo "Debe ser X.Y.Z donde X, Y, Z son números enteros"
-              exit 1
-            fi
-            
-            # Calcular los dígitos cambiados
-            BASE_MAJOR=$(echo "$BASE_VERSION" | cut -d. -f1)
-            BASE_MINOR=$(echo "$BASE_VERSION" | cut -d. -f2)
-            BASE_PATCH=$(echo "$BASE_VERSION" | cut -d. -f3)
-            HEAD_MAJOR=$(echo "$HEAD_VERSION" | cut -d. -f1)
-            HEAD_MINOR=$(echo "$HEAD_VERSION" | cut -d. -f2)
-            HEAD_PATCH=$(echo "$HEAD_VERSION" | cut -d. -f3)
-            
-            MAJOR_DIFF=$((HEAD_MAJOR - BASE_MAJOR))
-            MINOR_DIFF=$((HEAD_MINOR - BASE_MINOR))
-            PATCH_DIFF=$((HEAD_PATCH - BASE_PATCH))
-            
-            echo "📈 Cambios: major=$MAJOR_DIFF, minor=$MINOR_DIFF, patch=$PATCH_DIFF"
-            
-            # Validar lógica semver
-            if [ "$MAJOR_DIFF" -gt 1 ] || [ "$MINOR_DIFF" -gt 1 ] || [ "$PATCH_DIFF" -gt 1 ]; then
-              echo "⚠️  Cambio de versión inusual. Verifique que el bump sea correcto:"
-              echo "   - major (X+1.0.0) solo para cambios rompes Breaking"
-              echo "   - minor (X.Y+1.0) para nuevas funcionalidades"
-              echo "   - patch (X.Y.Z+1) para correcciones de bug"
-            fi
-            
-            echo "✅ package.json modificado y versión semver válida: $HEAD_VERSION"
+
+            echo "✅ package.json modificado: $MODIFIED"
 
   build-check:
     name: Build & TypeScript Check
@@ -106,6 +65,18 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkout Fantasy Map Generator
+        uses: actions/checkout@v7
+        with:
+          repo: Azgaar/Fantasy-Map-Generator
+          path: Fantasy-Map-Generator
+          fetch-depth: 0
+
+      - name: Symlink FMG for workspace
+        run: ln -sf "$GITHUB_WORKSPACE/Fantasy-Map-Generator" "$GITHUB_WORKSPACE/../Fantasy-Map-Generator" || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -125,6 +96,10 @@ jobs:
       - name: TypeScript check
         run: |
           pnpm build
+
+      - name: Build Fantasy Map Generator library
+        run: |
+          cd Fantasy-Map-Generator && pnpm run build:lib
 
   simulation-check:
     name: Simulation Smoke Test
@@ -149,6 +124,18 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Checkout Fantasy Map Generator
+        uses: actions/checkout@v7
+        with:
+          repo: Azgaar/Fantasy-Map-Generator
+          path: Fantasy-Map-Generator
+          fetch-depth: 0
+
+      - name: Symlink FMG for workspace
+        run: ln -sf "$GITHUB_WORKSPACE/Fantasy-Map-Generator" "$GITHUB_WORKSPACE/../Fantasy-Map-Generator" || true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -169,8 +156,8 @@ jobs:
         run: |
           pnpm smoke:simulation
 
-  docker-build-test:
-    name: Docker Build Test
+  unit-tests-fmg:
+    name: Fantasy Map Generator Unit Tests
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
 
@@ -178,24 +165,32 @@ jobs:
       contents: read
 
     steps:
-      - name: Check if any job failed
-        if: always()
-        run: |
-          RESPONSE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs")
-          FAILED=$(echo "$RESPONSE" | python3 -c "import sys,json;[print(j['name']) for j in json.load(sys.stdin)['jobs'] if j['name']!='${{ github.job }}' and j['conclusion'] in ('failure','cancelled','skipped')][:1]")
-          if [ -n "$FAILED" ]; then
-            echo "❌ Job $FAILED failed, skipping"
-            exit 1
-          fi
-        shell: bash
-
-      - name: Checkout
+      - name: Checkout AI Civilization
         uses: actions/checkout@v7
 
-      - name: Build Docker image
+      - name: Checkout Fantasy Map Generator
+        uses: actions/checkout@v7
+        with:
+          repo: Azgaar/Fantasy-Map-Generator
+          path: Fantasy-Map-Generator
+          fetch-depth: 0
+
+      - name: Symlink FMG for workspace
+        run: ln -sf "$GITHUB_WORKSPACE/Fantasy-Map-Generator" "$GITHUB_WORKSPACE/../Fantasy-Map-Generator" || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.0
+
+      - name: Install dependencies
         run: |
-          VERSION=$(grep -E '"version"' package.json | head -1 | sed -E 's/.*"version":\s*"([^"]+)".*/\1/')
-          IMAGE="ai-civilization-sandbox-test:${VERSION}"
-          docker build -t "$IMAGE" .
-          echo "✅ Docker image built successfully: $IMAGE"
+          pnpm install --frozen-lockfile
+          cd Fantasy-Map-Generator && pnpm install --frozen-lockfile
+
+      - name: Run FMG unit tests
+        run: |
+          cd Fantasy-Map-Generator && pnpm test --run

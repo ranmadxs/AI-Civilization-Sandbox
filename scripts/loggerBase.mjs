@@ -7,9 +7,9 @@ import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Logging setup – each script defines its own file name prefix
-export function initLog(logFileName) {
+export function initLog(logFileName, logDirOverride) {
   const dateStr = new Date().toISOString().slice(0, 10);
-  const logDir = join(process.cwd(), "target", "logs");
+  const logDir = logDirOverride || join(process.cwd(), "target", "logs");
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `${logFileName}_${dateStr}.log`);
   // Write header immediately

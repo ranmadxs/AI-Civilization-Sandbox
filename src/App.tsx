@@ -307,17 +307,33 @@ export default function App() {
         )}
       </aside>
       <section className="mapArea" aria-label="World map">
-        <WorldMap
-          world={world}
-          mapMode={mapMode}
-          mapRevision={simulation.mapRevision}
-          armyGroups={visibleArmyGroups}
-          selectedCityId={selectedCityId}
-          selectedProvinceId={selectedProvinceId}
-          onSelectCity={handleSelectCity}
-          onSelectProvince={handleSelectProvince}
-          language={language}
-        />
+        <div className="scFrame">
+          <div className="scFrameTop">
+            <span className="scCorner scCornerTL" />
+            <span className="scCorner scCornerTR" />
+          </div>
+          <div className="scFrameBody">
+            <div className="scFrameLeft" />
+            <WorldMap
+              world={world}
+              mapMode={mapMode}
+              mapRevision={simulation.mapRevision}
+              armyGroups={visibleArmyGroups}
+              selectedCityId={selectedCityId}
+              selectedProvinceId={selectedProvinceId}
+              onSelectCity={handleSelectCity}
+              onSelectProvince={handleSelectProvince}
+              language={language}
+            />
+            <div className="scFrameRight" />
+          </div>
+          <div className="scFrameBottom">
+            <span className="scCorner scCornerBL" />
+            <span className="scCorner scCornerBR" />
+            <span className="scWorldName">{world.seed}</span>
+            <span className="scWorldTime">{worldTime}</span>
+          </div>
+        </div>
       </section>
       <aside className="sidePanel" aria-label="World controls">
         <button
@@ -497,22 +513,27 @@ export default function App() {
                     </div>
                   </section>
                 )}
-                <section className="nationList">
-                  <h2>Nations</h2>
-                  <p className="sectionHint">Click a nation to open its detail panel.</p>
-                  {world.nations.map((nation) => (
-                    <button
-                      className="nationButton"
-                      key={nation.id}
-                      onClick={() => handleSelectNation(nation.id)}
-                      type="button"
-                    >
-                      <span style={{ backgroundColor: nation.color }} />
-                      <strong>{nation.name}</strong>
-                      <em>Details</em>
-                    </button>
-                  ))}
-                </section>
+                  <section className="nationList">
+                   <h2>Nations</h2>
+                   <p className="sectionHint">Click a nation to open its detail panel.</p>
+                   {world.nations.map((nation) => {
+                     const isDefeated = isNationDefeated(world, nation.id);
+                     const hasNoTiles = world.provinces.filter((p) => p.nationId === nation.id).length === 0;
+                     const isDead = isDefeated || hasNoTiles;
+                     return (
+                       <button
+                         className={isDead ? "nationButton nationButtonDead" : "nationButton"}
+                         key={nation.id}
+                         onClick={() => !isDead && handleSelectNation(nation.id)}
+                         type="button"
+                       >
+                         <span style={{ backgroundColor: nation.color }} />
+                         <strong>{nation.name}</strong>
+                         <em>{isDead ? "💀" : "Details"}</em>
+                       </button>
+                     );
+                   })}
+                 </section>
               </>
             )}
           </div>
