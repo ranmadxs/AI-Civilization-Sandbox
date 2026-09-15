@@ -47,7 +47,7 @@ function generateWorldSVG(world) {
   const TILE_SIZE = 10;
   const W = world.width + 2;
   const H = world.height + 2;
-  const terrainColors = { ocean: "#315f8f", coast: "#4a89a8", plain: "#88a95f", forest: "#477457", hill: "#9a8d65", mountain: "#7d7f85", desert: "#c9b06b" };
+  const terrainColors = { ocean: "#315f8f", coast: "#4a89a8", plain: "#88a95f", forest: "#477457", hill: "#9a8d65", mountain: "#7d7f85", desert: "#c9b06b", lake: "#2e7d9e" };
   const padding = 2;
 
   const tileNationMap = new Map();
@@ -271,5 +271,6 @@ const htmlContent = `<!DOCTYPE html><html><head><style>
 </body></html>`;
 
 writeFileSync(`${outputDir}/map_year_0.html`, htmlContent);
+await server.close();
 console.log(`Mapa generado: ${outputDir}/map_year_0.html`);
 console.log(`Naciones: ${world.nations.map(n => n.name).join(', ')}`);

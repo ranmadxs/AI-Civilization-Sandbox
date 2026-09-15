@@ -1,4 +1,4 @@
-export type Terrain = "ocean" | "coast" | "plain" | "forest" | "hill" | "mountain" | "desert";
+export type Terrain = "ocean" | "coast" | "plain" | "forest" | "hill" | "mountain" | "desert" | "lake";
 
 export type Resource = "grain" | "timber" | "iron" | "coal" | "oil";
 
@@ -36,6 +36,7 @@ export type Tile = {
   temperature: number;
   moisture: number;
   river?: boolean;
+  riverWidth?: number;
   provinceId?: string;
   resource?: Resource;
 };

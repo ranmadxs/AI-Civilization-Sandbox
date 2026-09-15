@@ -38,6 +38,7 @@ const terrainColors = {
   hill: 0x9a8d65,
   mountain: 0x7d7f85,
   desert: 0xc9b06b,
+  lake: 0x2e7d9e,
 };
 
 const resourceColors = {
@@ -65,6 +66,8 @@ export function WorldMap({
   language,
 }: WorldMapProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const appRef = useRef<Application | null>(null);
+  const viewportRef = useRef<Container | null>(null);
   const armyGraphicsRef = useRef<Graphics | null>(null);
   const armyLabelsRef = useRef<Container | null>(null);
   const armyPathsRef = useRef<Graphics | null>(null);
@@ -76,6 +79,40 @@ export function WorldMap({
   );
   const [zoom, setZoom] = useState(1);
   const [resourceTooltip, setResourceTooltip] = useState<ResourceTooltip | undefined>();
+
+  const zoomIn = () => {
+    const app = appRef.current;
+    const viewport = viewportRef.current;
+    if (!app || !viewport) return;
+    const centerX = app.renderer.width / 2;
+    const centerY = app.renderer.height / 2;
+    const beforeZoom = viewport.toLocal({ x: centerX, y: centerY });
+    const nextScale = clamp(viewport.scale.x * 1.2, MIN_SCALE, MAX_SCALE);
+    viewport.scale.set(nextScale);
+    setZoom(nextScale);
+    const afterZoom = viewport.toGlobal(beforeZoom);
+    viewport.position.set(
+      viewport.x + centerX - afterZoom.x,
+      viewport.y + centerY - afterZoom.y,
+    );
+  };
+
+  const zoomOut = () => {
+    const app = appRef.current;
+    const viewport = viewportRef.current;
+    if (!app || !viewport) return;
+    const centerX = app.renderer.width / 2;
+    const centerY = app.renderer.height / 2;
+    const beforeZoom = viewport.toLocal({ x: centerX, y: centerY });
+    const nextScale = clamp(viewport.scale.x / 1.2, MIN_SCALE, MAX_SCALE);
+    viewport.scale.set(nextScale);
+    setZoom(nextScale);
+    const afterZoom = viewport.toGlobal(beforeZoom);
+    viewport.position.set(
+      viewport.x + centerX - afterZoom.x,
+      viewport.y + centerY - afterZoom.y,
+    );
+  };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -114,10 +151,9 @@ export function WorldMap({
       pixiApp.canvas.style.left = "";
 
       app = pixiApp;
-      host.appendChild(pixiApp.canvas);
-      syncRendererSize(pixiApp, host, world);
-
+      appRef.current = pixiApp;
       const viewport = new Container();
+      viewportRef.current = viewport;
       pixiApp.stage.addChild(viewport);
 
       drawWorld(viewport, world, mapMode, tileByCoord, language);
@@ -191,6 +227,7 @@ export function WorldMap({
       pixiApp.stage.on("pointerupoutside", endDrag);
 
       const handleWheel = (event: WheelEvent) => {
+        event.preventDefault();
         const bounds = host.getBoundingClientRect();
         const scaleX = app!.renderer.width / Math.max(1, bounds.width);
         const scaleY = app!.renderer.height / Math.max(1, bounds.height);
@@ -199,8 +236,14 @@ export function WorldMap({
           y: (event.clientY - bounds.top) * scaleY,
         };
         const beforeZoom = viewport.toLocal(pointer);
+        
+        let delta = event.deltaY;
+        if (event.deltaMode === 1) delta *= 40;
+        else if (event.deltaMode === 2) delta *= 800;
+
+        const factor = Math.abs(delta) > 30 ? (delta > 0 ? 0.9 : 1.1) : (delta > 0 ? 0.97 : 1.03);
         const nextScale = clamp(
-          viewport.scale.x * (event.deltaY > 0 ? 0.9 : 1.1),
+          viewport.scale.x * factor,
           MIN_SCALE,
           MAX_SCALE,
         );
@@ -216,7 +259,7 @@ export function WorldMap({
 
       const handleMouseLeave = () => setResourceTooltip(undefined);
 
-      host.addEventListener("wheel", handleWheel, { passive: true });
+      host.addEventListener("wheel", handleWheel, { passive: false });
       host.addEventListener("mouseleave", handleMouseLeave);
 
       resizeObserver = new ResizeObserver(() => {
@@ -319,6 +362,8 @@ export function WorldMap({
       armyLabelsRef.current = null;
       armyPathsRef.current = null;
       selectedLayerRef.current = null;
+      appRef.current = null;
+      viewportRef.current = null;
       if (app?.canvas.parentElement === host) {
         host.removeChild(app.canvas);
       }
@@ -355,7 +400,14 @@ export function WorldMap({
 
   return (
     <div className="worldMap" ref={hostRef}>
-      <div className="mapHint">{language === "zh" ? "拖动平移 / 滚轮缩放" : "Drag to pan / Wheel to zoom"} / {Math.round(zoom * 100)}%</div>
+      <div className="mapZoomControls">
+        <button type="button" onClick={zoomIn} title="Zoom In">+</button>
+        <button type="button" onClick={zoomOut} title="Zoom Out">-</button>
+        <span className="zoomPercentage">{Math.round(zoom * 100)}%</span>
+      </div>
+      <div className="mapHint">
+        {language === "zh" ? "拖动平移 / 滚轮缩放" : "Drag to pan / Wheel to zoom"} / {Math.round(zoom * 100)}% / Tiles: {world.tiles.length.toLocaleString()}
+      </div>
       {resourceTooltip && (
         <div className="resourceTooltip" style={{ left: resourceTooltip.x, top: resourceTooltip.y }}>
           {resourceTooltip.label}

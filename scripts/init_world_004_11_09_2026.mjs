@@ -35,9 +35,6 @@ const outputDir = `${projectRoot}target/images/${seed}/execution_${execNum}`;
 const reportPath = `${outputDir}/report.html`;
 
 mkdirSync(outputDir, { recursive: true });
-const logsDir = `${projectRoot}target/logs`;
-const executionDir = `${logsDir}/execution_${execNum}`;
-mkdirSync(executionDir, { recursive: true });
 
 const server = await createServer({
   appType: "custom",
@@ -147,57 +144,70 @@ function generateWorldSVG(world) {
   const TILE_SIZE = 10;
   const W = world.width + 2; // Add padding on each side
   const H = world.height + 2;
-  const terrainColors = { ocean: "#315f8f", coast: "#4a89a8", plain: "#88a95f", forest: "#477457", hill: "#9a8d65", mountain: "#7d7f85", desert: "#c9b06b" };
-  const nationColors = {};
-  for (const nation of world.nations) { nationColors[nation.id] = nation.color; }
+  const terrainColors = { ocean: "#315f8f", coast: "#4a89a8", plain: "#88a95f", forest: "#477457", hill: "#9a8d65", mountain: "#7d7f85", desert: "#c9b06b", lake: "#2e7d9e" };
   const padding = 2;
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * TILE_SIZE}" height="${H * TILE_SIZE}" viewBox="0 0 ${W * TILE_SIZE} ${H * TILE_SIZE}" style="border: 4px solid #fff; border-radius: 8px; padding: 4px; background: #1a2332;">`;
-  // Draw tiles with offset padding - start from padding position
-  for (const tile of world.tiles) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${terrainColors[tile.terrain] || "#333"}"/>`;
-  for (const tile of world.tiles) { if (tile.river) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="#1a5276" opacity="0.7"/>`; }
+
+  const tileNationMap = new Map();
   for (const province of world.provinces) {
-    const nation = world.nationById.get(province.nationId);
-    const nc = nation ? nationColors[nation.id] : "#fff";
+    if (!province.nationId) continue;
     for (const tile of world.tiles) {
-      if (tile.provinceId === province.id) svg += `<rect x="${tile.x * TILE_SIZE + 1}" y="${tile.y * TILE_SIZE + 1}" width="${TILE_SIZE - 2}" height="${TILE_SIZE - 2}" fill="${nc}" opacity="0.15"/>`;
+      if (tile.provinceId === province.id) tileNationMap.set(`${tile.x},${tile.y}`, province.nationId);
     }
   }
-  const nationProvinceTiles = {};
-  for (const province of world.provinces) {
-    const nid = province.nationId;
-    if (!nationProvinceTiles[nid]) nationProvinceTiles[nid] = [];
-    nationProvinceTiles[nid].push(province);
+
+  const allTileKeys = new Set();
+  for (const tile of world.tiles) allTileKeys.add(`${tile.x},${tile.y}`);
+  for (const [tileKey] of tileNationMap) allTileKeys.delete(tileKey);
+
+  const nationTiles = {};
+  for (const [tileKey, nid] of tileNationMap) {
+    if (!nationTiles[nid]) nationTiles[nid] = [];
+    nationTiles[nid].push(tileKey);
   }
-  for (const [nid, provinces] of Object.entries(nationProvinceTiles)) {
+  if (allTileKeys.size > 0) nationTiles["__neutral__"] = [...allTileKeys];
+
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * TILE_SIZE}" height="${H * TILE_SIZE}" viewBox="0 0 ${W * TILE_SIZE} ${H * TILE_SIZE}" style="background: #1a2332;">`;
+  
+  for (const tile of world.tiles) svg += `<rect x="${(padding + tile.x) * TILE_SIZE}" y="${(padding + tile.y) * TILE_SIZE}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${terrainColors[tile.terrain] || "#333"}"/>`;
+  for (const tile of world.tiles) { if (tile.river && tile.terrain !== "lake") { const rw = tile.riverWidth || 1; const rx = (padding + tile.x) * TILE_SIZE - (rw - 1) * TILE_SIZE / 2; svg += `<rect x="${rx}" y="${(padding + tile.y) * TILE_SIZE}" width="${rw * TILE_SIZE}" height="${TILE_SIZE}" fill="#1a5276" opacity="0.7"/>`; } }
+
+  for (const nid of Object.keys(nationTiles).sort()) {
     const nation = world.nationById.get(nid);
-    const borderColor = nation ? nation.color : "#000";
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const p of provinces) {
-      const pxs = world.tiles.filter((t) => t.provinceId === p.id).map((t) => t.x);
-      const pys = world.tiles.filter((t) => t.provinceId === p.id).map((t) => t.y);
-      if (pxs.length > 0) {
-        minX = Math.min(minX, Math.min(...pxs));
-        maxX = Math.max(maxX, Math.max(...pxs));
-        minY = Math.min(minY, Math.min(...pys));
-        maxY = Math.max(maxY, Math.max(...pys));
+    const color = nation ? nation.color : "#888";
+    const isNeutral = nid === "__neutral__";
+    const opacity = isNeutral ? 0.05 : 0.3;
+    svg += `<g id="nation-${nid}">`;
+    for (const tileKey of nationTiles[nid]) {
+      const [tx, ty] = tileKey.split(",").map(Number);
+      const sx = (padding + tx) * TILE_SIZE;
+      const sy = (padding + ty) * TILE_SIZE;
+      svg += `<rect x="${sx}" y="${sy}" width="${TILE_SIZE}" height="${TILE_SIZE}" fill="${color}" opacity="${opacity}"/>`;
+      if (!isNeutral) {
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ntx = tx + dx, nty = ty + dy;
+          const neighborNid = tileNationMap.get(`${ntx},${nty}`);
+          if (neighborNid !== nid) {
+            if (dx === 1) svg += `<line x1="${sx + TILE_SIZE}" y1="${sy}" x2="${sx + TILE_SIZE}" y2="${sy + TILE_SIZE}" stroke="${color}" stroke-opacity="1" stroke-width="2"/>`;
+            else if (dx === -1) svg += `<line x1="${sx}" y1="${sy}" x2="${sx}" y2="${sy + TILE_SIZE}" stroke="${color}" stroke-opacity="1" stroke-width="2"/>`;
+            else if (dy === 1) svg += `<line x1="${sx}" y1="${sy + TILE_SIZE}" x2="${sx + TILE_SIZE}" y2="${sy + TILE_SIZE}" stroke="${color}" stroke-opacity="1" stroke-width="2"/>`;
+            else if (dy === -1) svg += `<line x1="${sx}" y1="${sy}" x2="${sx + TILE_SIZE}" y2="${sy}" stroke="${color}" stroke-opacity="1" stroke-width="2"/>`;
+          }
+        }
       }
     }
-    if (minX < Infinity) {
-      const borderW = (maxX - minX + 1) * TILE_SIZE;
-      const borderH = (maxY - minY + 1) * TILE_SIZE;
-      svg += `<rect x="${minX * TILE_SIZE}" y="${minY * TILE_SIZE}" width="${borderW}" height="${borderH}" fill="none" stroke="${borderColor}" stroke-width="3"/>`;
-    }
+    svg += `</g>`;
   }
+
   for (const city of world.cities) {
-    const x = city.x * TILE_SIZE + TILE_SIZE / 2, y = city.y * TILE_SIZE + TILE_SIZE / 2;
+    const x = (padding + city.x) * TILE_SIZE + TILE_SIZE / 2, y = (padding + city.y) * TILE_SIZE + TILE_SIZE / 2;
     const nation = world.nationById.get(city.nationId);
     svg += `<circle cx="${x}" cy="${y}" r="${city.isCapital ? 5 : 3}" fill="${nation ? nation.color : "#fff"}" opacity="0.9"/>`;
   }
   for (const nation of world.nations) {
     const capitalCity = nation.capitalCityId ? world.cityById.get(nation.capitalCityId) : undefined;
     const capitalProvince = world.provinceById.get(nation.capitalProvinceId);
-    const cx = (capitalCity?.x ?? capitalProvince?.centerX) ?? 0;
-    const cy = (capitalCity?.y ?? capitalProvince?.centerY) ?? 0;
+    const cx = (padding + (capitalCity?.x ?? capitalProvince?.centerX ?? 0));
+    const cy = (padding + (capitalCity?.y ?? capitalProvince?.centerY ?? 0));
     svg += `<text x="${cx * TILE_SIZE + TILE_SIZE * 0.7}" y="${cy * TILE_SIZE - TILE_SIZE * 0.9}" fill="#fff" font-size="12" font-weight="bold" stroke="none">${nation.name}</text>`;
   }
   svg += "</svg>";
@@ -210,7 +220,117 @@ async function captureWorld(world, simulation, month) {
   const year = monthToYear(month);
   const htmlPath = `${outputDir}/map_year_${year}.html`;
   const svgContent = generateWorldSVG(world);
-  const htmlContent = `<!DOCTYPE html><html><head><style>body{margin:0;background:#132028;display:flex;justify-content:center;align-items:center;width:100vw;height:100vh}svg{max-width:100vw;max-height:100vh}</style></head><body>${svgContent}</body></html>`;
+  const TILE_SIZE = 10;
+  const W = (world.width + 2) * TILE_SIZE;
+  const H = (world.height + 2) * TILE_SIZE;
+
+  const htmlContent = `<!DOCTYPE html><html><head><style>
+    body{margin:0;background:#0d1117;display:flex;justify-content:center;align-items:center;width:100vw;height:100vh;overflow:hidden;font-family:Arial,sans-serif}
+    .mapViewport{position:relative;width:1040px;height:715px;max-width:95vw;max-height:90vh;background:#132028;border:3px solid #58a6ff;border-radius:8px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.6);cursor:grab}
+    .mapViewport:active{cursor:grabbing}
+    .mapLayer{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+    svg{display:block}
+    .mapZoomControls{position:absolute;left:16px;bottom:16px;z-index:10;display:flex;align-items:center;gap:6px;background:rgb(15 24 30 / 92%);border:1px solid rgb(255 255 255 / 20%);border-radius:6px;padding:6px 10px;box-shadow:0 4px 12px rgba(0,0,0,0.4);pointer-events:auto}
+    .mapZoomControls button{background:#161b22;border:1px solid #30363d;color:#c9d1d9;width:28px;height:28px;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .mapZoomControls button:hover{background:#21262d;border-color:#58a6ff;color:#58a6ff}
+    .zoomPercentage{font-size:12px;color:rgb(240 246 237 / 78%);min-width:40px;text-align:center}
+  </style></head><body>
+    <div class="mapViewport" id="mapViewport">
+      <div class="mapLayer" id="mapLayer">
+        ${svgContent}
+      </div>
+      <div class="mapZoomControls">
+        <button type="button" onclick="zoomIn()">+</button>
+        <button type="button" onclick="zoomOut()">-</button>
+        <span class="zoomPercentage" id="zoomPercent">50%</span>
+      </div>
+    </div>
+    <script>
+      const svgW = ${W};
+      const svgH = ${H};
+      const viewport = document.getElementById('mapViewport');
+      const viewportW = viewport.clientWidth;
+      const viewportH = viewport.clientHeight;
+
+      const fitScale = Math.min(viewportW / svgW, viewportH / svgH);
+      let scale = fitScale;
+      const minScale = fitScale;
+      const maxScale = fitScale * 5.0;
+
+      let panX = (viewportW - svgW * scale) / 2;
+      let panY = (viewportH - svgH * scale) / 2;
+      let isDragging = false;
+      let startX = 0, startY = 0;
+      
+      const layer = document.getElementById('mapLayer');
+      const zoomLabel = document.getElementById('zoomPercent');
+
+      function updateTransform() {
+        layer.style.transform = \`translate(\${panX}px, \${panY}px) scale(\${scale})\`;
+        const percent = Math.round((scale / fitScale) * 40);
+        zoomLabel.textContent = percent + '%';
+      }
+
+      updateTransform();
+
+      function zoomIn() {
+        const oldScale = scale;
+        scale = Math.min(maxScale, scale * 1.2);
+        const cx = viewportW / 2;
+        const cy = viewportH / 2;
+        panX = cx - (cx - panX) * (scale / oldScale);
+        panY = cy - (cy - panY) * (scale / oldScale);
+        updateTransform();
+      }
+
+      function zoomOut() {
+        const oldScale = scale;
+        scale = Math.max(minScale, scale / 1.2);
+        const cx = viewportW / 2;
+        const cy = viewportH / 2;
+        panX = cx - (cx - panX) * (scale / oldScale);
+        panY = cy - (cy - panY) * (scale / oldScale);
+        updateTransform();
+      }
+
+      viewport.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = viewport.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        let delta = e.deltaY;
+        if (e.deltaMode === 1) delta *= 40;
+        else if (e.deltaMode === 2) delta *= 800;
+
+        const factor = Math.abs(delta) > 30 ? (delta > 0 ? 0.9 : 1.1) : (delta > 0 ? 0.97 : 1.03);
+        const oldScale = scale;
+        scale = Math.min(maxScale, Math.max(minScale, scale * factor));
+
+        panX = mouseX - (mouseX - panX) * (scale / oldScale);
+        panY = mouseY - (mouseY - panY) * (scale / oldScale);
+
+        updateTransform();
+      }, { passive: false });
+
+      viewport.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        panX = e.clientX - startX;
+        panY = e.clientY - startY;
+        updateTransform();
+      });
+
+      window.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+    </script>
+  </body></html>`;
   writeFileSync(htmlPath, htmlContent);
   return htmlPath;
 }
@@ -360,7 +480,10 @@ function buildFinalReport() {
 }
 
 try {
-  const snapshots = [];
+  recordSnapshot(0);
+  const pngPath0 = await captureWorld(world, simulation, 0);
+  writeFileSync(`${outputDir}/report_year_0.html`, buildAnnualReport(world, simulation, 0));
+  const snapshots = [{ month: 0, year: 0, pngPath: pngPath0 }];
 
   const policyHistory = [];
   for (let month = 1; month <= monthsToRun; month += 1) {
@@ -388,7 +511,9 @@ try {
     const avgCityLevel = world.cities.filter((c) => c.nationId === n.id).reduce((s, c) => s + c.level, 0) / Math.max(world.cities.filter((c) => c.nationId === n.id).length, 1);
     console.log(`- ${n.name}: pop=${last.population.toLocaleString()} (+${(last.population - first.population).toLocaleString()}), tiles=${last.tiles}, provinces=${last.provinces}, cities=${last.cities}, era=${getTechnologyEra(avgCityLevel)}`);
   }
-  const logPath = initLog(seed);
+  const logPath = initLog(`${seed}_execution_${execNum}`, outputDir);
+  const execLogPath = `${outputDir}/execution_${execNum}.log`;
+  writeFileSync(execLogPath, readFileSync(logPath));
 
   logLine(logPath, `=== Ejecución ${execNum} - ${seed} ===`);
   logLine(logPath, `Seed: ${seed}`);
